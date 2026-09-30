@@ -10,14 +10,14 @@ let package = Package(
             name: "MultitouchSupport",
             publicHeadersPath: "include",
             cSettings: [
-                // Путь к приватным фреймворкам macOS для поиска заголовков
                 .unsafeFlags(["-F/System/Library/PrivateFrameworks"])
             ],
             linkerSettings: [
-                // Подключаем публичные и приватные фреймворки
                 .linkedFramework("Cocoa"),
                 .linkedFramework("CoreFoundation"),
-                .unsafeFlags(["-framework", "MultitouchSupport", "-F/System/Library/PrivateFrameworks"])
+                .unsafeFlags([
+                    "-framework", "MultitouchSupport", "-F/System/Library/PrivateFrameworks",
+                ]),
             ]
         ),
         .executableTarget(
@@ -27,13 +27,15 @@ let package = Package(
                 .process("Assets.xcassets")
             ],
             swiftSettings: [
-                .enableUpcomingFeature("ApproachableConcurrency"),
+                .enableUpcomingFeature("ApproachableConcurrency")
             ],
             linkerSettings: [
                 .unsafeFlags([
                     "-Xlinker", "-framework",
                     "-Xlinker", "MultitouchSupport",
-                    "-Xlinker", "-F/System/Library/PrivateFrameworks"
+                    "-Xlinker", "-framework",
+                    "-Xlinker", "SkyLight",
+                    "-Xlinker", "-F/System/Library/PrivateFrameworks",
                 ])
             ],
         ),

@@ -31,6 +31,8 @@ import MultitouchSupport
 
     let state = GlobalState.shared
 
+    state.nFingers = Int(nFingers)
+
     state.threeDown =
       allowMoreFingers ? nFingers >= fingersQua : nFingers == fingersQua
 

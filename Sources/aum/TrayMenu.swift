@@ -14,6 +14,7 @@ import os
   private var accessibilityPermissionActionItem: NSMenuItem!
 
   private var capsLockSwitchItem: NSMenuItem!
+  private var instantSpaceSwitcher: NSMenuItem!
   private var tapToClickItem: NSMenuItem!
 
   private var launchAtLoginItem: NSMenuItem!
@@ -67,6 +68,13 @@ import os
       target: self
     )
     updateCapsLockSwitchItem()
+
+    instantSpaceSwitcher = menu.addItem(
+      withTitle: "Instant space switcher",
+      action: #selector(toggleInstantSpaces),
+      target: self
+    )
+    updateInstantSpacesItem()
 
     tapToClickItem = menu.addItem(
       withTitle: "Tap to click", action: #selector(toggleTapToClick), target: self)
@@ -175,6 +183,15 @@ extension TrayMenu {
 
   private func updateCapsLockSwitchItem() {
     capsLockSwitchItem.state = config.capsLockSwitch ? .on : .off
+  }
+
+  @objc private func toggleInstantSpaces(sender: NSButton) {
+    config.instantSpaces = (instantSpaceSwitcher.state == .off)
+    updateInstantSpacesItem()
+  }
+
+  private func updateInstantSpacesItem() {
+    instantSpaceSwitcher.state = config.instantSpaces ? .on : .off
   }
 
   @objc private func toggleTapToClick(sender: NSButton) {

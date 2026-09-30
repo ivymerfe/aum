@@ -14,12 +14,16 @@ final class GlobalState {
     private init() {
     }
     var threeDown = false
+    var nFingers = 0
     var wasThreeDown = false
     var naturalMiddleClickLastTime: Date?
+    var syntheticEventsToPassThrough: Int = 0
 }
 
 @MainActor final class Config: ConfigCore {
     @UserDefault var capsLockSwitch = true
+
+    @UserDefault var instantSpaces = true
 
     @UserDefault var tapToClick = SystemPermissions.getIsSystemTapToClickEnabled
 
@@ -35,23 +39,20 @@ final class GlobalState {
 }
 
 @main
-@MainActor final class AumApp: PointerableObject, Sendable {
+@MainActor final class AumApp: PointerableObject {
     private static var instance: AumApp?
     private static let config = Config.shared
     private static let state = GlobalState.shared
     private static let wakeRestartTimeout: TimeInterval = 10
-    private static let kCGMouseButtonCenter = Int64(CGMouseButton.center.rawValue)
 
     private lazy var multitouchManager = IOMultitouchManager {
         self.scheduleRestart(2, reason: "Multitouch device added")
     }
 
     private var restartTimer: Timer?
-
     private(set) var isUserSessionActive = true
 
     let accessibilityMonitor: AccessibilityMonitor = AccessibilityMonitor()
-    lazy var trayMenu: TrayMenu = TrayMenu()
 
     static func getInstance() -> AumApp {
         if let instance = instance {
@@ -75,55 +76,22 @@ final class GlobalState {
         multitouchManager.setupMultitouchListener()
         setupDisplayReconfigurationCallback()
 
+        let trayMenu = TrayMenu()
+
         accessibilityMonitor.addListener { becameTrusted in
             if becameTrusted {
-                _ = Self.mouseEventHandler.start()
+                _ = CGEventListener.shared.start()
             } else {
-                self.trayMenu.isStatusItemVisible = true
-                Self.mouseEventHandler.stop()
+                trayMenu.isStatusItemVisible = true
+                CGEventListener.shared.stop()
             }
         }
         checkForConflicts()
 
         accessibilityMonitor.start()
         let app = NSApplication.shared
-        app.delegate = self.trayMenu
+        app.delegate = trayMenu
         app.run()
-    }
-
-    static let mouseEventHandler = CGEventController {
-        _, type, event, _ in
-
-        let returnedEvent = Unmanaged.passUnretained(event)
-
-        if Config.shared.capsLockSwitch && type == .flagsChanged {
-            let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-
-            // 57 - VK_CAPSLOCK
-            if keyCode == 57 {
-                let flags = event.flags
-
-                if flags.contains(.maskAlphaShift) {
-                    switchToNextInputSource()
-                }
-                return nil
-            }
-        }
-
-        if state.threeDown && (type == .leftMouseDown || type == .rightMouseDown) {
-            state.wasThreeDown = true
-            state.threeDown = false
-            state.naturalMiddleClickLastTime = Date()
-            event.type = .otherMouseDown
-            event.setIntegerValueField(.mouseEventButtonNumber, value: kCGMouseButtonCenter)
-        }
-
-        if state.wasThreeDown && (type == .leftMouseUp || type == .rightMouseUp) {
-            state.wasThreeDown = false
-            event.type = .otherMouseUp
-            event.setIntegerValueField(.mouseEventButtonNumber, value: kCGMouseButtonCenter)
-        }
-        return returnedEvent
     }
 
     func scheduleRestart(_ delay: TimeInterval, reason: String) {
@@ -134,7 +102,7 @@ final class GlobalState {
         restartLog.info("\(reason), restarting in \(delay)")
         restartTimer?.invalidate()
         restartTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { _ in
-            Task { @MainActor in self.restartListeners() }
+            Task { @MainActor in AumApp.getInstance().restartListeners() }
         }
     }
 
@@ -148,12 +116,12 @@ final class GlobalState {
 
     private func startUnstableListeners() {
         TouchHandler.shared.registerTouchCallback()
-        _ = Self.mouseEventHandler.start()
+        _ = CGEventListener.shared.start()
     }
 
     private func stopUnstableListeners() {
         TouchHandler.shared.unregisterTouchCallback()
-        Self.mouseEventHandler.stop()
+        CGEventListener.shared.stop()
     }
 
     private func observeSystemNotifications() {
