@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import OSLog
 
 let log = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "app")
@@ -18,6 +19,10 @@ final class GlobalState {
 }
 
 @MainActor final class Config: ConfigCore {
+    @UserDefault var capsLockSwitch = true
+
+    @UserDefault var tapToClick = SystemPermissions.getIsSystemTapToClickEnabled
+
     @UserDefault("fingers")
     var minimumFingers = 3
 
@@ -27,12 +32,11 @@ final class GlobalState {
 
     @UserDefault(transformGet: { $0 / 1000 })
     var maxTimeDelta = 300.0
-
-    @UserDefault var tapToClick = SystemPermissions.getIsSystemTapToClickEnabled
 }
 
 @main
 @MainActor final class AumApp: PointerableObject, Sendable {
+    private static var instance: AumApp?
     private static let config = Config.shared
     private static let state = GlobalState.shared
     private static let wakeRestartTimeout: TimeInterval = 10
@@ -46,48 +50,21 @@ final class GlobalState {
 
     private(set) var isUserSessionActive = true
 
-    let accessibilityMonitor: AccessibilityMonitor
-    let trayMenu: TrayMenu
+    let accessibilityMonitor: AccessibilityMonitor = AccessibilityMonitor()
+    lazy var trayMenu: TrayMenu = TrayMenu()
+
+    static func getInstance() -> AumApp {
+        if let instance = instance {
+            return instance
+        }
+        let newInstance = AumApp()
+        instance = newInstance
+        return newInstance
+    }
 
     static func main() {
-        let app = NSApplication.shared
-
-        let accessibilityMonitor = AccessibilityMonitor()
-        let trayMenu = TrayMenu(accessibilityMonitor: accessibilityMonitor)
-        let controller = AumApp(accessibilityMonitor: accessibilityMonitor, trayMenu: trayMenu)
-        controller.start()
-        trayMenu.restartListeners = controller.restartListeners
-
-        accessibilityMonitor.start()
-
-        app.delegate = trayMenu
-        app.run()
-    }
-
-    static let mouseEventHandler = CGEventController {
-        _, type, event, _ in
-
-        let returnedEvent = Unmanaged.passUnretained(event)
-
-        if state.threeDown && (type == .leftMouseDown || type == .rightMouseDown) {
-            state.wasThreeDown = true
-            state.threeDown = false
-            state.naturalMiddleClickLastTime = Date()
-            event.type = .otherMouseDown
-            event.setIntegerValueField(.mouseEventButtonNumber, value: kCGMouseButtonCenter)
-        }
-
-        if state.wasThreeDown && (type == .leftMouseUp || type == .rightMouseUp) {
-            state.wasThreeDown = false
-            event.type = .otherMouseUp
-            event.setIntegerValueField(.mouseEventButtonNumber, value: kCGMouseButtonCenter)
-        }
-        return returnedEvent
-    }
-
-    init(accessibilityMonitor: AccessibilityMonitor, trayMenu: TrayMenu) {
-        self.accessibilityMonitor = accessibilityMonitor
-        self.trayMenu = trayMenu
+        let app = getInstance()
+        app.start()
     }
 
     func start() {
@@ -106,8 +83,47 @@ final class GlobalState {
                 Self.mouseEventHandler.stop()
             }
         }
-
         checkForConflicts()
+
+        accessibilityMonitor.start()
+        let app = NSApplication.shared
+        app.delegate = self.trayMenu
+        app.run()
+    }
+
+    static let mouseEventHandler = CGEventController {
+        _, type, event, _ in
+
+        let returnedEvent = Unmanaged.passUnretained(event)
+
+        if Config.shared.capsLockSwitch && type == .flagsChanged {
+            let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+
+            // 57 - VK_CAPSLOCK
+            if keyCode == 57 {
+                let flags = event.flags
+
+                if flags.contains(.maskAlphaShift) {
+                    switchToNextInputSource()
+                }
+                return nil
+            }
+        }
+
+        if state.threeDown && (type == .leftMouseDown || type == .rightMouseDown) {
+            state.wasThreeDown = true
+            state.threeDown = false
+            state.naturalMiddleClickLastTime = Date()
+            event.type = .otherMouseDown
+            event.setIntegerValueField(.mouseEventButtonNumber, value: kCGMouseButtonCenter)
+        }
+
+        if state.wasThreeDown && (type == .leftMouseUp || type == .rightMouseUp) {
+            state.wasThreeDown = false
+            event.type = .otherMouseUp
+            event.setIntegerValueField(.mouseEventButtonNumber, value: kCGMouseButtonCenter)
+        }
+        return returnedEvent
     }
 
     func scheduleRestart(_ delay: TimeInterval, reason: String) {

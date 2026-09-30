@@ -1,6 +1,6 @@
+import CoreFoundation
 import CoreGraphics
 import Foundation
-import CoreFoundation
 
 class CGEventController {
   private var eventTap: CFMachPort?
@@ -14,30 +14,33 @@ class CGEventController {
   func start() -> Bool {
     // If we already have a valid tap, don’t install another one
     if eventTap != nil && CFMachPortIsValid(eventTap) && runLoopSrc != nil {
-        print("Mouse callback already registered.")
+      print("Mouse callback already registered.")
       return true
     }
 
     // Ensure any previous state is cleaned up before creating a new one
     stop()
 
-    guard let tap = CGEvent.tapCreate(
-      tap: .cghidEventTap,
-      place: .headInsertEventTap,
-      options: .defaultTap,
-      eventsOfInterest: .from(
-        .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp
-      ),
-      callback: callback,
-      userInfo: nil
-    ) else {
+    guard
+      let tap = CGEvent.tapCreate(
+        tap: .cghidEventTap,
+        place: .headInsertEventTap,
+        options: .defaultTap,
+        eventsOfInterest: .from(
+          .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp,
+          .flagsChanged, .keyDown, .keyUp
+        ),
+        callback: callback,
+        userInfo: nil
+      )
+    else {
       print("Failed to create event tap (check accessibility permission).")
       return false
     }
 
     guard let src = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
       print("Failed to create RunLoop source for event tap.")
-      CFMachPortInvalidate(tap) // Clean up the tap if source creation fails
+      CFMachPortInvalidate(tap)  // Clean up the tap if source creation fails
       return false
     }
 
@@ -66,8 +69,8 @@ class CGEventController {
 
       // Ensure state is clean regardless of why the guard failed
       eventTap = nil
-      runLoopSrc = nil // If the tap is gone/invalid, the source is useless
-      return // Exit the function
+      runLoopSrc = nil  // If the tap is gone/invalid, the source is useless
+      return  // Exit the function
     }
 
     // --- If guard passes, 'tap' is guaranteed non-nil and valid ---
@@ -80,7 +83,7 @@ class CGEventController {
     if let src = runLoopSrc {
       CFRunLoopRemoveSource(CFRunLoopGetCurrent(), src, .commonModes)
       // CFRunLoopRemoveSource handles releasing the source
-      self.runLoopSrc = nil // Clear our reference
+      self.runLoopSrc = nil  // Clear our reference
     } else {
       print("RunLoop source was unexpectedly nil during unregister for a valid tap.")
     }
@@ -88,7 +91,7 @@ class CGEventController {
     // Invalidate the underlying Mach port
     CFMachPortInvalidate(tap)
     // CFMachPortInvalidate handles releasing the port
-    self.eventTap = nil // Clear our reference
+    self.eventTap = nil  // Clear our reference
 
     print("Successfully unregistered mouse callback.")
   }
@@ -99,8 +102,8 @@ class CGEventController {
   }
 }
 
-fileprivate extension CGEventMask {
-  static func from(_ types: CGEventType...) -> Self {
+extension CGEventMask {
+  fileprivate static func from(_ types: CGEventType...) -> Self {
     var mask: UInt64 = 0
 
     for type in types {

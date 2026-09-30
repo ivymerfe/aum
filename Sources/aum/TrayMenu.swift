@@ -3,14 +3,20 @@ import ServiceManagement
 import os
 
 @MainActor final class TrayMenu: NSObject, NSMenuDelegate {
-  let accessibilityMonitor: AccessibilityMonitor
   private let config = Config.shared
+  private lazy var app = AumApp.getInstance()
 
   static let version =
     Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?.?.?"
 
-  private var infoItem, tapToClickItem, accessibilityPermissionStatusItem,
-    accessibilityPermissionActionItem, ignoredAppItem, launchAtLoginItem: NSMenuItem!
+  private var infoItem: NSMenuItem!
+  private var accessibilityPermissionStatusItem: NSMenuItem!
+  private var accessibilityPermissionActionItem: NSMenuItem!
+
+  private var capsLockSwitchItem: NSMenuItem!
+  private var tapToClickItem: NSMenuItem!
+
+  private var launchAtLoginItem: NSMenuItem!
   private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
   var isStatusItemVisible: Bool {
@@ -18,8 +24,9 @@ import os
     set { statusItem.isVisible = newValue }
   }
 
-  init(accessibilityMonitor: AccessibilityMonitor) {
-    self.accessibilityMonitor = accessibilityMonitor
+  private var timesHandledReopen = 0
+
+  override init() {
     super.init()
 
     if Self.shouldDelayInit {
@@ -30,7 +37,7 @@ import os
   }
   private func initSequence() {
     setupStatusItem()
-    accessibilityMonitor.addListener(onChange: updateAccessibilityPermissionStatus)
+    app.accessibilityMonitor.addListener(onChange: updateAccessibilityPermissionStatus)
   }
 
   #if DEBUG
@@ -54,8 +61,16 @@ import os
     createMenuAccessibilityPermissionItems(menu)
     menu.addSeparator()
 
+    capsLockSwitchItem = menu.addItem(
+      withTitle: "Caps Lock Switch",
+      action: #selector(toggleCapsLockSwitch),
+      target: self
+    )
+    updateCapsLockSwitchItem()
+
     tapToClickItem = menu.addItem(
       withTitle: "Tap to click", action: #selector(toggleTapToClick), target: self)
+    updateTapToClickItem()
 
     menu.addSeparator()
 
@@ -66,14 +81,12 @@ import os
     )
     updateLaunchAtLoginItem()
 
-    #if DEBUG
-      _ = menu.addItem(
-        withTitle: "Restart listeners",
-        action: #selector(restartNow),
-        target: self,
-        keyEquivalent: "r"
-      )
-    #endif
+    _ = menu.addItem(
+      withTitle: "Restart listeners",
+      action: #selector(restartNow),
+      target: self,
+      keyEquivalent: "r"
+    )
 
     menu.addSeparator()
 
@@ -111,11 +124,6 @@ import os
     icon.size = CGSize(width: 25, height: 25)
     return icon
   }
-
-  #if DEBUG
-    private var timesHandledReopen = 0
-    var restartListeners: (() -> Void)?
-  #endif
 }
 
 #if DEBUG
@@ -160,19 +168,31 @@ extension TrayMenu {
     }
   }
 
+  @objc private func toggleCapsLockSwitch(sender: NSButton) {
+    config.capsLockSwitch = (capsLockSwitchItem.state == .off)
+    updateCapsLockSwitchItem()
+  }
+
+  private func updateCapsLockSwitchItem() {
+    capsLockSwitchItem.state = config.capsLockSwitch ? .on : .off
+  }
+
   @objc private func toggleTapToClick(sender: NSButton) {
     config.tapToClick = sender.state == .off
+    updateTapToClickItem()
+  }
+
+  private func updateTapToClickItem() {
+    tapToClickItem.state = config.tapToClick ? .on : .off
   }
 
   @objc private func actionQuit(sender: Any) {
     NSApp.terminate(sender)
   }
 
-  #if DEBUG
-    @objc private func restartNow() {
-      restartListeners?()
-    }
-  #endif
+  @objc private func restartNow() {
+    app.restartListeners()
+  }
 }
 
 extension TrayMenu: NSApplicationDelegate {
@@ -208,9 +228,11 @@ extension TrayMenu {
     modifyLoginItem(add: launchAtLoginItem.state == .off)
     updateLaunchAtLoginItem()
   }
+
   private func updateLaunchAtLoginItem() {
     launchAtLoginItem.state = isLoginItemEnabled() ? .on : .off
   }
+
   private func isLoginItemEnabled() -> Bool {
     if #available(macOS 13.0, *) {
       return SMAppService.mainApp.status == .enabled
@@ -234,6 +256,7 @@ extension TrayMenu {
       return false
     }
   }
+
   private func modifyLoginItem(add: Bool) {
     if #available(macOS 13.0, *) {
       do {

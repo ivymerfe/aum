@@ -32,7 +32,7 @@ import MultitouchSupport
     let state = GlobalState.shared
 
     state.threeDown =
-    allowMoreFingers ? nFingers >= fingersQua : nFingers == fingersQua
+      allowMoreFingers ? nFingers >= fingersQua : nFingers == fingersQua
 
     let handler = TouchHandler.shared
 
@@ -62,7 +62,8 @@ import MultitouchSupport
       handler.resetMiddleClick()
     }
 
-    let isCurrentFingersQuaAllowed = allowMoreFingers ? nFingers >= fingersQua : nFingers == fingersQua
+    let isCurrentFingersQuaAllowed =
+      allowMoreFingers ? nFingers >= fingersQua : nFingers == fingersQua
     guard isCurrentFingersQuaAllowed else { return }
 
     handler.processTouches(data: data, nFingers: nFingers)
@@ -114,7 +115,8 @@ import MultitouchSupport
 
   private static func emulateMiddleClick() {
     if let lastTime = lastEmulatedMiddleClickTime,
-       -lastTime.timeIntervalSinceNow < maxTimeDelta * 0.3 {
+      -lastTime.timeIntervalSinceNow < maxTimeDelta * 0.3
+    {
       return
     }
     lastEmulatedMiddleClickTime = .init()
@@ -131,7 +133,7 @@ import MultitouchSupport
     guard let naturalLastTime = GlobalState.shared.naturalMiddleClickLastTime else { return false }
 
     let elapsedTimeSinceNatural = -naturalLastTime.timeIntervalSinceNow
-    return elapsedTimeSinceNatural <= Self.maxTimeDelta * 0.75 // fine-tuned multiplier
+    return elapsedTimeSinceNatural <= Self.maxTimeDelta * 0.75  // fine-tuned multiplier
   }
 
   private static func postMouseEvent(
