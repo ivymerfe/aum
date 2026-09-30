@@ -11,23 +11,13 @@ let restartLog = Logger(
 final class GlobalState {
     static let shared = GlobalState()
     private init() {
-        Config.shared.$ignoredAppBundles.onSet {
-            self.ignoredAppBundlesCache = $0
-        }
     }
-
     var threeDown = false
     var wasThreeDown = false
     var naturalMiddleClickLastTime: Date?
-    /// stored locally, since accessing the cache is more CPU-expensive than a local variable
-    var ignoredAppBundlesCache = Config.shared.ignoredAppBundles
 }
 
 @MainActor final class Config: ConfigCore {
-    required init() {
-        Self.options.cacheAll = true
-    }
-
     @UserDefault("fingers")
     var minimumFingers = 3
 
@@ -39,8 +29,6 @@ final class GlobalState {
     var maxTimeDelta = 300.0
 
     @UserDefault var tapToClick = SystemPermissions.getIsSystemTapToClickEnabled
-
-    @UserDefault var ignoredAppBundles = Set<String>()
 }
 
 @main

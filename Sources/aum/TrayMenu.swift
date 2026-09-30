@@ -4,11 +4,15 @@ import os
 
 @MainActor final class TrayMenu: NSObject, NSMenuDelegate {
   let accessibilityMonitor: AccessibilityMonitor
-
   private let config = Config.shared
+
+  static let version =
+    Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?.?.?"
+
   private var infoItem, tapToClickItem, accessibilityPermissionStatusItem,
     accessibilityPermissionActionItem, ignoredAppItem, launchAtLoginItem: NSMenuItem!
   private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+
   var isStatusItemVisible: Bool {
     get { statusItem.isVisible }
     set { statusItem.isVisible = newValue }
@@ -27,11 +31,6 @@ import os
   private func initSequence() {
     setupStatusItem()
     accessibilityMonitor.addListener(onChange: updateAccessibilityPermissionStatus)
-    config.$minimumFingers.onSet { _ in
-      DispatchQueue.main.async {
-        self.updateTapToClickStatus()
-      }
-    }
   }
 
   #if DEBUG
@@ -46,33 +45,17 @@ import os
     accessibilityPermissionActionItem.isHidden = hasAccessibilityPermission
   }
 
-  private func updateTapToClickStatus() {
-    let tapToClick = config.tapToClick
-    let clickModeInfo = "Click" + (tapToClick ? " or Tap" : "")
-    let fingersInfo = " with \(config.minimumFingers)\(config.allowMoreFingers ? "+" : "") Fingers"
-
-    infoItem.title = clickModeInfo + fingersInfo
-    tapToClickItem.state = tapToClick ? .on : .off
-  }
-
   private func createMenu() -> NSMenu {
     let menu = NSMenu()
     menu.delegate = self
 
+    infoItem = menu.addItem(withTitle: "Aum v\(Self.version)")
+
     createMenuAccessibilityPermissionItems(menu)
     menu.addSeparator()
 
-    infoItem = menu.addItem(withTitle: "")
-
     tapToClickItem = menu.addItem(
       withTitle: "Tap to click", action: #selector(toggleTapToClick), target: self)
-
-    let resetItem = menu.addItem(
-      withTitle: "Reset to System Settings", action: #selector(resetTapToClick), target: self)
-    resetItem.isAlternate = true
-    resetItem.keyEquivalentModifierMask = .option
-
-    updateTapToClickStatus()
 
     menu.addSeparator()
 
@@ -82,8 +65,6 @@ import os
       target: self
     )
     updateLaunchAtLoginItem()
-
-    _ = menu.addItem(withTitle: "Version \(BundleInfo.version)")
 
     #if DEBUG
       _ = menu.addItem(
@@ -125,7 +106,7 @@ import os
 
   private func createStatusIcon() -> NSImage {
     guard let icon = Bundle.module.image(forResource: "StatusIcon") else {
-        return NSImage()
+      return NSImage()
     }
     icon.size = CGSize(width: 25, height: 25)
     return icon
@@ -181,12 +162,6 @@ extension TrayMenu {
 
   @objc private func toggleTapToClick(sender: NSButton) {
     config.tapToClick = sender.state == .off
-    updateTapToClickStatus()
-  }
-
-  @objc private func resetTapToClick() {
-    config.$tapToClick.delete()
-    updateTapToClickStatus()
   }
 
   @objc private func actionQuit(sender: Any) {
@@ -310,12 +285,4 @@ extension NSMenu {
   func addSeparator() {
     self.addItem(.separator())
   }
-}
-
-class BundleInfo {
-  private static func bundleInfo(_ key: String) -> String {
-    return Bundle.main.infoDictionary?[key] as? String ?? "%\(key)%"
-  }
-
-  static let version = bundleInfo("CFBundleShortVersionString")
 }

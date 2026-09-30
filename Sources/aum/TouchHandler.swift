@@ -78,9 +78,7 @@ import MultitouchSupport
     } else {
       middleClickPos2 = .zero
     }
-
-//    TODO: Wait, what? Why is this iterating by fingersQua instead of nFingers, given that e.g. "allowMoreFingers" exists?
-    for touch in UnsafeBufferPointer(start: data, count: Self.fingersQua) {
+    for touch in UnsafeBufferPointer(start: data, count: Int(nFingers)) {
       let pos = SIMD2(touch.normalizedVector.position)
       if maybeMiddleClick {
         middleClickPos1 += pos
