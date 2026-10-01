@@ -33,6 +33,16 @@ import MultitouchSupport
   private(set) var currentRotation: Int = 0
   private var screenSize: CGSize = .zero
 
+  private var currentDeviceList: [MTDevice] = []
+  func registerTouchCallback() {
+    currentDeviceList = MTDevice.createList()
+    currentDeviceList.forEach { $0.registerAndStart(touchCallback) }
+  }
+  func unregisterTouchCallback() {
+    currentDeviceList.forEach { $0.unregisterAndStop(touchCallback) }
+    currentDeviceList.removeAll()
+  }
+
   func updateDisplayConfig(rotation: Int, bounds: CGRect) {
     let rotationChanged = (self.currentRotation != rotation)
     self.currentRotation = rotation
@@ -197,14 +207,43 @@ import MultitouchSupport
     )?.post(tap: .cghidEventTap)
   }
 
-  private var currentDeviceList: [MTDevice] = []
-  func registerTouchCallback() {
-    currentDeviceList = MTDevice.createList()
-    currentDeviceList.forEach { $0.registerAndStart(touchCallback) }
+  static func rotate(x: Int64, y: Int64) -> (Int64, Int64) {
+    switch TouchHandler.shared.currentRotation {
+    case 90:
+      return (-y, x)
+    case 180:
+      return (-x, -y)
+    case 270:
+      return (y, -x)
+    default:
+      return (x, y)
+    }
   }
-  func unregisterTouchCallback() {
-    currentDeviceList.forEach { $0.unregisterAndStop(touchCallback) }
-    currentDeviceList.removeAll()
+
+  static func rotate(x: Double, y: Double) -> (Double, Double) {
+    switch TouchHandler.shared.currentRotation {
+    case 90:
+      return (-y, x)
+    case 180:
+      return (-x, -y)
+    case 270:
+      return (y, -x)
+    default:
+      return (x, y)
+    }
+  }
+
+  static func rotate(x: CGFloat, y: CGFloat) -> (CGFloat, CGFloat) {
+    switch TouchHandler.shared.currentRotation {
+    case 90:
+      return (-y, x)
+    case 180:
+      return (-x, -y)
+    case 270:
+      return (y, -x)
+    default:
+      return (x, y)
+    }
   }
 }
 

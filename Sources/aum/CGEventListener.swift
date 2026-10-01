@@ -1,6 +1,19 @@
+import AppKit
 import CoreFoundation
 import CoreGraphics
 import Foundation
+
+extension CGEventMask {
+  fileprivate static func from(_ types: CGEventType...) -> Self {
+    var mask: UInt64 = 0
+
+    for type in types {
+      mask |= (1 << type.rawValue)
+    }
+
+    return Self(mask)
+  }
+}
 
 @MainActor class CGEventListener {
   static let shared = CGEventListener()
@@ -39,6 +52,104 @@ import Foundation
   private let eventTapCallback: CGEventTapCallBack = { _, type, event, _ in
     CGEventListener.handle(type: type, event: event)
   }
+  private static var navTracking = false
+  private static var navTouching = false
+  private static var navLocked = false
+  private static var navFired = false
+  private static var navStart = CGPoint.zero
+
+  func start() -> Bool {
+    if eventTap != nil && CFMachPortIsValid(eventTap) && runLoopSrc != nil {
+      return true
+    }
+
+    stop()
+
+    guard
+      let tap = CGEvent.tapCreate(
+        tap: .cgSessionEventTap,
+        place: .headInsertEventTap,
+        options: .defaultTap,
+        eventsOfInterest: .from(
+          .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp,
+          .scrollWheel,
+          .flagsChanged, .keyDown, .keyUp, Self.kCGSEventDockControl, Self.kCGSEventGesture
+        ),
+        callback: eventTapCallback,
+        userInfo: nil
+      )
+    else {
+      log.info("Failed to create event tap (check accessibility permission).")
+      return false
+    }
+
+    guard let src = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
+      CFMachPortInvalidate(tap)
+      return false
+    }
+
+    CFRunLoopAddSource(CFRunLoopGetCurrent(), src, .commonModes)
+    CGEvent.tapEnable(tap: tap, enable: true)
+
+    self.eventTap = tap
+    self.runLoopSrc = src
+    return true
+  }
+
+  func stop() {
+    if let tap = eventTap {
+      CGEvent.tapEnable(tap: tap, enable: false)
+      if let src = runLoopSrc {
+        CFRunLoopRemoveSource(CFRunLoopGetCurrent(), src, .commonModes)
+      }
+      CFMachPortInvalidate(tap)
+    }
+    eventTap = nil
+    runLoopSrc = nil
+  }
+
+  func reenable() {
+    if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
+  }
+
+  private static func handleNavGesture(_ event: CGEvent) {
+    guard event.getIntegerValueField(kCGEventGestureHIDType) == 0 else { return }
+
+    guard let ns = NSEvent(cgEvent: event) else { return }
+
+    let touches = Array(ns.touches(matching: .touching, in: nil))
+    guard touches.count == 2 else {
+      navTouching = false
+      navTracking = false
+      navFired = false
+      return
+    }
+    let a = touches[0].normalizedPosition
+    let (ax, ay) = TouchHandler.rotate(x: a.x, y: -a.y)
+    let b = touches[1].normalizedPosition
+    let (bx, by) = TouchHandler.rotate(x: b.x, y: -b.y)
+    let c = CGPoint(x: (ax + bx) / 2, y: (ay + by) / 2)
+    navTouching = true
+    if !navTracking {
+      navTracking = true
+      navFired = false
+      navLocked = false
+      navStart = c
+      return
+    }
+    let dx = c.x - navStart.x
+    let dy = c.y - navStart.y
+    if !navLocked && abs(dx) > 0.04 && abs(dx) > abs(dy) * 2 { navLocked = true }
+    if navLocked && !navFired && abs(dx) > 0.06 {
+      navFired = true
+      let code: CGKeyCode = dx > 0 ? 33 : 30
+      for down in [true, false] {
+        let e = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down)
+        e?.flags = .maskCommand
+        e?.post(tap: .cgSessionEventTap)
+      }
+    }
+  }
 
   static func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
     let returnedEvent = Unmanaged.passUnretained(event)
@@ -51,6 +162,11 @@ import Foundation
     if type == .keyDown && Hotkeys.handle(event) { return nil }
 
     if type == .scrollWheel {
+      if navLocked
+        && (navTouching || event.getIntegerValueField(.scrollWheelEventMomentumPhase) != 0)
+      {
+        return nil
+      }
       let rotation = TouchHandler.shared.currentRotation
       if rotation != 0 {
         let dy = event.getIntegerValueField(.scrollWheelEventDeltaAxis1)
@@ -60,40 +176,10 @@ import Foundation
         let pointDy = event.getIntegerValueField(.scrollWheelEventPointDeltaAxis1)
         let pointDx = event.getIntegerValueField(.scrollWheelEventPointDeltaAxis2)
 
-        let (newDx, newDy): (Int64, Int64)
-        let (newPtDx, newPtDy): (Double, Double)
-        let (newPointDx, newPointDy): (Int64, Int64)
+        let (newDx, newDy) = TouchHandler.rotate(x: dx, y: dy)
+        let (newPtDx, newPtDy) = TouchHandler.rotate(x: ptDx, y: ptDy)
+        let (newPointDx, newPointDy) = TouchHandler.rotate(x: pointDx, y: pointDy)
 
-        switch rotation {
-        case 90:
-          newDx = -dy
-          newDy = dx
-          newPtDx = -ptDy
-          newPtDy = ptDx
-          newPointDx = -pointDy
-          newPointDy = pointDx
-        case 180:
-          newDx = -dx
-          newDy = -dy
-          newPtDx = -ptDx
-          newPtDy = -ptDy
-          newPointDx = -pointDx
-          newPointDy = -pointDy
-        case 270:
-          newDx = dy
-          newDy = -dx
-          newPtDx = ptDy
-          newPtDy = -ptDx
-          newPointDx = pointDy
-          newPointDy = -pointDx
-        default:
-          newDx = dx
-          newDy = dy
-          newPtDx = ptDx
-          newPtDy = ptDy
-          newPointDx = pointDx
-          newPointDy = pointDy
-        }
         event.setIntegerValueField(.scrollWheelEventDeltaAxis1, value: newDy)
         event.setIntegerValueField(.scrollWheelEventDeltaAxis2, value: newDx)
         event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: newPtDy)
@@ -115,6 +201,36 @@ import Foundation
       state.syntheticEventsToPassThrough -= 1
       return returnedEvent
     }
+    if type == kCGSEventGesture {
+      handleNavGesture(event)
+      // I dont know how to rotate touches inside gesture event
+      return nil
+    }
+    if type == kCGSEventDockControl {
+      let rotation = TouchHandler.shared.currentRotation
+      if rotation != 0,
+        event.getIntegerValueField(kCGEventGestureHIDType) == kIOHIDEventTypeDockSwipe
+      {
+        let motion = event.getIntegerValueField(kCGEventGestureSwipeMotion)
+        if motion == 1 || motion == 2 {
+          let horizontal = motion == 1
+          let (ux, uy) = TouchHandler.rotate(x: horizontal ? 1.0 : 0.0, y: horizontal ? 0.0 : -1.0)
+          let newMotion: Int64 = abs(ux) > 0.5 ? 1 : 2
+          let sign = newMotion == 1 ? ux : -uy
+
+          let progress = event.getDoubleValueField(kCGEventGestureSwipeProgress)
+          let vx = event.getDoubleValueField(kCGEventGestureSwipeVelocityX)
+          let vy = event.getDoubleValueField(CGEventField(rawValue: 130)!)
+          let (rx, ry) = TouchHandler.rotate(x: vx, y: -vy)
+
+          event.setIntegerValueField(kCGEventGestureSwipeMotion, value: newMotion)
+          event.setDoubleValueField(kCGEventGestureSwipeProgress, value: progress * sign)
+          event.setDoubleValueField(kCGEventGestureSwipeVelocityX, value: rx)
+          event.setDoubleValueField(CGEventField(rawValue: 130)!, value: -ry)
+        }
+      }
+    }
+
     if config.middleClick {
       if state.threeDown && (type == .leftMouseDown || type == .rightMouseDown) {
         state.wasThreeDown = true
@@ -201,71 +317,5 @@ import Foundation
       }
     }
     return returnedEvent
-  }
-
-  func start() -> Bool {
-    if eventTap != nil && CFMachPortIsValid(eventTap) && runLoopSrc != nil {
-      return true
-    }
-
-    stop()
-
-    guard
-      let tap = CGEvent.tapCreate(
-        tap: .cgSessionEventTap,
-        place: .headInsertEventTap,
-        options: .defaultTap,
-        eventsOfInterest: .from(
-          .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp,
-          .scrollWheel,
-          .flagsChanged, .keyDown, .keyUp, Self.kCGSEventDockControl, Self.kCGSEventGesture
-        ),
-        callback: eventTapCallback,
-        userInfo: nil
-      )
-    else {
-      print("Failed to create event tap (check accessibility permission).")
-      return false
-    }
-
-    guard let src = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
-      CFMachPortInvalidate(tap)
-      return false
-    }
-
-    CFRunLoopAddSource(CFRunLoopGetCurrent(), src, .commonModes)
-    CGEvent.tapEnable(tap: tap, enable: true)
-
-    self.eventTap = tap
-    self.runLoopSrc = src
-    return true
-  }
-
-  func stop() {
-    if let tap = eventTap {
-      CGEvent.tapEnable(tap: tap, enable: false)
-      if let src = runLoopSrc {
-        CFRunLoopRemoveSource(CFRunLoopGetCurrent(), src, .commonModes)
-      }
-      CFMachPortInvalidate(tap)
-    }
-    eventTap = nil
-    runLoopSrc = nil
-  }
-
-  func reenable() {
-    if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
-  }
-}
-
-extension CGEventMask {
-  fileprivate static func from(_ types: CGEventType...) -> Self {
-    var mask: UInt64 = 0
-
-    for type in types {
-      mask |= (1 << type.rawValue)
-    }
-
-    return Self(mask)
   }
 }
