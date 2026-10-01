@@ -30,11 +30,11 @@ import Foundation
   private static let config = Config.shared
   private static let state = GlobalState.shared
 
-  private var eventTap: CFMachPort?
-  private var runLoopSrc: CFRunLoopSource?
-
   private static var swipeTracking = false
   private static var swipeFired = false
+
+  private var eventTap: CFMachPort?
+  private var runLoopSrc: CFRunLoopSource?
 
   private let eventTapCallback: CGEventTapCallBack = { _, type, event, _ in
     CGEventListener.handle(type: type, event: event)
@@ -48,6 +48,62 @@ import Foundation
       shared.reenable()
       return returnedEvent
     }
+    if type == .keyDown && Hotkeys.handle(event) { return nil }
+
+    if type == .scrollWheel {
+      let rotation = TouchHandler.shared.currentRotation
+      if rotation != 0 {
+        let dy = event.getIntegerValueField(.scrollWheelEventDeltaAxis1)
+        let dx = event.getIntegerValueField(.scrollWheelEventDeltaAxis2)
+        let ptDy = event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1)
+        let ptDx = event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2)
+        let pointDy = event.getIntegerValueField(.scrollWheelEventPointDeltaAxis1)
+        let pointDx = event.getIntegerValueField(.scrollWheelEventPointDeltaAxis2)
+
+        let (newDx, newDy): (Int64, Int64)
+        let (newPtDx, newPtDy): (Double, Double)
+        let (newPointDx, newPointDy): (Int64, Int64)
+
+        switch rotation {
+        case 90:
+          newDx = -dy
+          newDy = dx
+          newPtDx = -ptDy
+          newPtDy = ptDx
+          newPointDx = -pointDy
+          newPointDy = pointDx
+        case 180:
+          newDx = -dx
+          newDy = -dy
+          newPtDx = -ptDx
+          newPtDy = -ptDy
+          newPointDx = -pointDx
+          newPointDy = -pointDy
+        case 270:
+          newDx = dy
+          newDy = -dx
+          newPtDx = ptDy
+          newPtDy = -ptDx
+          newPointDx = pointDy
+          newPointDy = -pointDx
+        default:
+          newDx = dx
+          newDy = dy
+          newPtDx = ptDx
+          newPtDy = ptDy
+          newPointDx = pointDx
+          newPointDy = pointDy
+        }
+        event.setIntegerValueField(.scrollWheelEventDeltaAxis1, value: newDy)
+        event.setIntegerValueField(.scrollWheelEventDeltaAxis2, value: newDx)
+        event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: newPtDy)
+        event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: newPtDx)
+        event.setIntegerValueField(.scrollWheelEventPointDeltaAxis1, value: newPointDy)
+        event.setIntegerValueField(.scrollWheelEventPointDeltaAxis2, value: newPointDx)
+      }
+      return returnedEvent
+    }
+
     if state.syntheticEventsToPassThrough > 0
       && CFAbsoluteTimeGetCurrent() - SpaceSwitcher.lastGestureTime >= 1.0
     {
@@ -90,11 +146,11 @@ import Foundation
         }
       }
       if type == kCGSEventDockControl {
-        let hidType = event.getIntegerValueField(CGEventField(rawValue: 110)!)
-        if hidType == 23 {
-          let motion = event.getIntegerValueField(CGEventField(rawValue: 123)!)
-          if motion == 1 {
-            let phaseRaw = event.getIntegerValueField(CGEventField(rawValue: 132)!)
+        let hidType = event.getIntegerValueField(kCGEventGestureHIDType)
+        if hidType == kIOHIDEventTypeDockSwipe {
+          let motion = event.getIntegerValueField(kCGEventGestureSwipeMotion)
+          if motion == kCGGestureMotionHorizontal {
+            let phaseRaw = event.getIntegerValueField(kCGEventGesturePhase)
 
             switch phaseRaw {
             case 1:
@@ -105,8 +161,7 @@ import Foundation
             case 2:
               if !swipeTracking { return returnedEvent }
               if !swipeFired {
-                let progress = event.getDoubleValueField(
-                  CGEventField(rawValue: 124)!)
+                let progress = event.getDoubleValueField(kCGEventGestureSwipeProgress)
                 if progress != 0.0 {
                   swipeFired = true
                   SpaceSwitcher.focusSpace(right: progress > 0)
@@ -117,8 +172,7 @@ import Foundation
             case 4:
               if !swipeTracking { return returnedEvent }
               if !swipeFired {
-                let velocity = event.getDoubleValueField(
-                  CGEventField(rawValue: 129)!)
+                let velocity = event.getDoubleValueField(kCGEventGestureSwipeVelocityX)
                 if velocity != 0.0 {
                   swipeFired = true
                   SpaceSwitcher.focusSpace(right: velocity > 0)
@@ -126,8 +180,8 @@ import Foundation
               }
               swipeTracking = false
               swipeFired = false
-              event.setDoubleValueField(CGEventField(rawValue: 124)!, value: 0.0)
-              event.setDoubleValueField(CGEventField(rawValue: 129)!, value: 0.0)
+              event.setDoubleValueField(kCGEventGestureSwipeProgress, value: 0.0)
+              event.setDoubleValueField(kCGEventGestureSwipeVelocityX, value: 0.0)
               event.setDoubleValueField(CGEventField(rawValue: 130)!, value: 0.0)
               return returnedEvent
 
@@ -150,13 +204,10 @@ import Foundation
   }
 
   func start() -> Bool {
-    // If we already have a valid tap, don’t install another one
     if eventTap != nil && CFMachPortIsValid(eventTap) && runLoopSrc != nil {
-      print("Mouse callback already registered.")
       return true
     }
 
-    // Ensure any previous state is cleaned up before creating a new one
     stop()
 
     guard
@@ -166,6 +217,7 @@ import Foundation
         options: .defaultTap,
         eventsOfInterest: .from(
           .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp,
+          .scrollWheel,
           .flagsChanged, .keyDown, .keyUp, Self.kCGSEventDockControl, Self.kCGSEventGesture
         ),
         callback: eventTapCallback,
@@ -177,8 +229,7 @@ import Foundation
     }
 
     guard let src = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
-      print("Failed to create RunLoop source for event tap.")
-      CFMachPortInvalidate(tap)  // Clean up the tap if source creation fails
+      CFMachPortInvalidate(tap)
       return false
     }
 
@@ -187,51 +238,19 @@ import Foundation
 
     self.eventTap = tap
     self.runLoopSrc = src
-
-    print("Successfully registered mouse callback.")
     return true
   }
 
   func stop() {
-    // Use guard to safely unwrap and validate the eventTap
-    guard let tap = eventTap, CFMachPortIsValid(tap) else {
-      // This block executes if eventTap is nil OR if eventTap exists but is invalid.
-      // We can add specific logging if needed, but the main goal is cleanup.
-      if eventTap != nil {
-        // This means eventTap existed but was invalid
-        print("Event tap was invalid, cleaning up.")
-      } else {
-        // This means eventTap was nil
-        // print("No event tap found to unregister (was nil).") // Optional logging
+    if let tap = eventTap {
+      CGEvent.tapEnable(tap: tap, enable: false)
+      if let src = runLoopSrc {
+        CFRunLoopRemoveSource(CFRunLoopGetCurrent(), src, .commonModes)
       }
-
-      // Ensure state is clean regardless of why the guard failed
-      eventTap = nil
-      runLoopSrc = nil  // If the tap is gone/invalid, the source is useless
-      return  // Exit the function
+      CFMachPortInvalidate(tap)
     }
-
-    // --- If guard passes, 'tap' is guaranteed non-nil and valid ---
-
-    // Disable the tap first
-    CGEvent.tapEnable(tap: tap, enable: false)
-
-    // Remove the source from the run loop *if it exists*
-    // (It should exist if 'tap' was valid, but check for safety)
-    if let src = runLoopSrc {
-      CFRunLoopRemoveSource(CFRunLoopGetCurrent(), src, .commonModes)
-      // CFRunLoopRemoveSource handles releasing the source
-      self.runLoopSrc = nil  // Clear our reference
-    } else {
-      print("RunLoop source was unexpectedly nil during unregister for a valid tap.")
-    }
-
-    // Invalidate the underlying Mach port
-    CFMachPortInvalidate(tap)
-    // CFMachPortInvalidate handles releasing the port
-    self.eventTap = nil  // Clear our reference
-
-    print("Successfully unregistered mouse callback.")
+    eventTap = nil
+    runLoopSrc = nil
   }
 
   func reenable() {

@@ -155,6 +155,15 @@ final class GlobalState {
 
     static let displayReconfigurationCallback: CGDisplayReconfigurationCallBack = {
         _, flags, userData in
+        if flags.contains(.beginConfigurationFlag) { return }
+
+        let mainDisplay = CGMainDisplayID()
+        let rotation = Int(CGDisplayRotation(mainDisplay))
+        let bounds = CGDisplayBounds(mainDisplay)
+
+        Task { @MainActor in
+            TouchHandler.shared.updateDisplayConfig(rotation: rotation, bounds: bounds)
+        }
         if !flags.isDisjoint(with: [.setModeFlag, .addFlag, .removeFlag, .disabledFlag]) {
             AumApp.from(pointer: userData).scheduleRestart(2, reason: "Display reconfigured")
         }

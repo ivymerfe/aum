@@ -32,11 +32,11 @@ let package = Package(
             ],
             linkerSettings: [
                 .unsafeFlags([
-                    "-Xlinker", "-framework",
-                    "-Xlinker", "MultitouchSupport",
-                    "-Xlinker", "-framework",
-                    "-Xlinker", "SkyLight",
-                    "-Xlinker", "-F/System/Library/PrivateFrameworks",
+                    "-F/System/Library/PrivateFrameworks",
+                    "-framework",
+                    "MultitouchSupport",
+                    "-framework",
+                    "SkyLight",
                 ])
             ],
         ),
