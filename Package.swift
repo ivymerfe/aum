@@ -5,6 +5,7 @@ import PackageDescription
 
 let package = Package(
     name: "aum",
+    platforms: [.macOS(.v26)],
     targets: [
         .target(
             name: "MultitouchSupport",

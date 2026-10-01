@@ -21,21 +21,10 @@ final class GlobalState {
 }
 
 @MainActor final class Config: ConfigCore {
-    @UserDefault var capsLockSwitch = true
-
+    @UserDefault var capsLockSwitcher = true
     @UserDefault var instantSpaces = true
-
+    @UserDefault var middleClick = true
     @UserDefault var tapToClick = SystemPermissions.getIsSystemTapToClickEnabled
-
-    @UserDefault("fingers")
-    var minimumFingers = 3
-
-    @UserDefault var allowMoreFingers = false
-
-    @UserDefault var maxDistanceDelta: Float = 0.05
-
-    @UserDefault(transformGet: { $0 / 1000 })
-    var maxTimeDelta = 300.0
 }
 
 @main
@@ -180,7 +169,7 @@ final class GlobalState {
 
     private func checkForConflicts() {
         accessibilityMonitor.addListener { becameTrusted in
-            guard becameTrusted, Self.config.minimumFingers == 3 else { return }
+            guard becameTrusted else { return }
 
             let threeFingerDragConflict = SystemPermissions.getIsSystemThreeFingerDragEnabled()
             let threeFingerTapConflict =

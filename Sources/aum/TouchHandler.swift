@@ -2,23 +2,23 @@ import MultitouchSupport
 
 @MainActor class TouchHandler {
   static let shared = TouchHandler()
+
+  private static var fingersCount: Int = 3
+  private static let maxDistanceDelta: Float = 0.05
+  private static let maxTimeDelta: Double = 0.3
+
   private static let config = Config.shared
+  private var middleClick = config.middleClick
+  private var tapToClick = config.tapToClick
+
   private init() {
+    Self.config.$middleClick.onSet {
+      self.middleClick = $0
+    }
     Self.config.$tapToClick.onSet {
       self.tapToClick = $0
     }
-    Self.config.$minimumFingers.onSet {
-      Self.fingersQua = $0
-    }
   }
-
-  /// stored locally, since accessing the cache is more CPU-expensive than a local variable
-  private var tapToClick = config.tapToClick
-
-  private static var fingersQua = config.minimumFingers
-  private static let allowMoreFingers = config.allowMoreFingers
-  private static let maxDistanceDelta = config.maxDistanceDelta
-  private static let maxTimeDelta = config.maxTimeDelta
 
   private var maybeMiddleClick = false
   private var touchStartTime: Date?
@@ -32,13 +32,11 @@ import MultitouchSupport
     let state = GlobalState.shared
 
     state.nFingers = Int(nFingers)
-
-    state.threeDown =
-      allowMoreFingers ? nFingers >= fingersQua : nFingers == fingersQua
+    state.threeDown = nFingers == TouchHandler.fingersCount
 
     let handler = TouchHandler.shared
 
-    guard handler.tapToClick else { return }
+    guard handler.middleClick && handler.tapToClick else { return }
 
     guard nFingers != 0 else {
       handler.handleTouchEnd()
@@ -57,19 +55,12 @@ import MultitouchSupport
         handler.maybeMiddleClick = false
       }
     }
-
-    guard !(nFingers < fingersQua) else { return }
-
-    if !allowMoreFingers && nFingers > fingersQua {
+    guard nFingers >= TouchHandler.fingersCount else { return }
+    if nFingers > TouchHandler.fingersCount {
       handler.resetMiddleClick()
+    } else {
+      handler.processTouches(data: data, nFingers: nFingers)
     }
-
-    let isCurrentFingersQuaAllowed =
-      allowMoreFingers ? nFingers >= fingersQua : nFingers == fingersQua
-    guard isCurrentFingersQuaAllowed else { return }
-
-    handler.processTouches(data: data, nFingers: nFingers)
-
     return
   }
 

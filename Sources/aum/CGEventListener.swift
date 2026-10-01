@@ -27,6 +27,7 @@ import Foundation
     case cancelled = 8
   }
 
+  private static let config = Config.shared
   private static let state = GlobalState.shared
 
   private var eventTap: CFMachPort?
@@ -47,7 +48,6 @@ import Foundation
       shared.reenable()
       return returnedEvent
     }
-
     if state.syntheticEventsToPassThrough > 0
       && CFAbsoluteTimeGetCurrent() - SpaceSwitcher.lastGestureTime >= 1.0
     {
@@ -59,7 +59,21 @@ import Foundation
       state.syntheticEventsToPassThrough -= 1
       return returnedEvent
     }
-    if Config.shared.capsLockSwitch && type == .flagsChanged {
+    if config.middleClick {
+      if state.threeDown && (type == .leftMouseDown || type == .rightMouseDown) {
+        state.wasThreeDown = true
+        state.threeDown = false
+        state.naturalMiddleClickLastTime = Date()
+        event.type = .otherMouseDown
+        event.setIntegerValueField(.mouseEventButtonNumber, value: kCGMouseButtonCenter)
+      }
+      if state.wasThreeDown && (type == .leftMouseUp || type == .rightMouseUp) {
+        state.wasThreeDown = false
+        event.type = .otherMouseUp
+        event.setIntegerValueField(.mouseEventButtonNumber, value: kCGMouseButtonCenter)
+      }
+    }
+    if config.capsLockSwitcher && type == .flagsChanged {
       let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
       if keyCode == kCapsLockKeyCode {
         if event.flags.contains(.maskAlphaShift) {
@@ -68,7 +82,7 @@ import Foundation
         return nil
       }
     }
-    if Config.shared.instantSpaces {
+    if config.instantSpaces {
       if type == kCGSEventDockControl || type == kCGSEventGesture {
         let sourcePid = event.getIntegerValueField(.eventSourceUnixProcessID)
         if sourcePid != 0 {
@@ -131,18 +145,6 @@ import Foundation
       if type == kCGSEventGesture && swipeTracking {
         return nil
       }
-    }
-    if state.threeDown && (type == .leftMouseDown || type == .rightMouseDown) {
-      state.wasThreeDown = true
-      state.threeDown = false
-      state.naturalMiddleClickLastTime = Date()
-      event.type = .otherMouseDown
-      event.setIntegerValueField(.mouseEventButtonNumber, value: kCGMouseButtonCenter)
-    }
-    if state.wasThreeDown && (type == .leftMouseUp || type == .rightMouseUp) {
-      state.wasThreeDown = false
-      event.type = .otherMouseUp
-      event.setIntegerValueField(.mouseEventButtonNumber, value: kCGMouseButtonCenter)
     }
     return returnedEvent
   }

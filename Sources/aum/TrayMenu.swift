@@ -2,7 +2,7 @@ import AppKit
 import ServiceManagement
 import os
 
-@MainActor final class TrayMenu: NSObject, NSMenuDelegate {
+@MainActor final class TrayMenu: NSObject, NSMenuDelegate, NSApplicationDelegate {
   private let config = Config.shared
   private lazy var app = AumApp.getInstance()
 
@@ -13,8 +13,9 @@ import os
   private var accessibilityPermissionStatusItem: NSMenuItem!
   private var accessibilityPermissionActionItem: NSMenuItem!
 
-  private var capsLockSwitchItem: NSMenuItem!
+  private var capsLockSwitcherItem: NSMenuItem!
   private var instantSpaceSwitcher: NSMenuItem!
+  private var middleClickItem: NSMenuItem!
   private var tapToClickItem: NSMenuItem!
 
   private var launchAtLoginItem: NSMenuItem!
@@ -25,6 +26,7 @@ import os
     set { statusItem.isVisible = newValue }
   }
 
+  private static let shouldDelayInit = terminateExistingInstance(force: false)
   private var timesHandledReopen = 0
 
   override init() {
@@ -41,12 +43,6 @@ import os
     app.accessibilityMonitor.addListener(onChange: updateAccessibilityPermissionStatus)
   }
 
-  #if DEBUG
-    private static let shouldDelayInit = terminateExistingInstance(force: false)
-  #else
-    private static let shouldDelayInit = false
-  #endif
-
   private func updateAccessibilityPermissionStatus(_ hasAccessibilityPermission: Bool) {
     statusItem.button?.appearsDisabled = !hasAccessibilityPermission
     accessibilityPermissionStatusItem.isHidden = hasAccessibilityPermission
@@ -56,29 +52,35 @@ import os
   private func createMenu() -> NSMenu {
     let menu = NSMenu()
     menu.delegate = self
+    menu.autoenablesItems = false
 
     infoItem = menu.addItem(withTitle: "Aum v\(Self.version)")
 
     createMenuAccessibilityPermissionItems(menu)
     menu.addSeparator()
 
-    capsLockSwitchItem = menu.addItem(
-      withTitle: "Caps Lock Switch",
-      action: #selector(toggleCapsLockSwitch),
+    capsLockSwitcherItem = menu.addItem(
+      withTitle: "Caps layout switcher",
+      action: #selector(toggleCapsLockSwitcher),
       target: self
     )
-    updateCapsLockSwitchItem()
 
     instantSpaceSwitcher = menu.addItem(
       withTitle: "Instant space switcher",
       action: #selector(toggleInstantSpaces),
       target: self
     )
-    updateInstantSpacesItem()
+
+    menu.addSeparator()
+
+    middleClickItem = menu.addItem(
+      withTitle: "Middle click emulation",
+      action: #selector(toggleMiddleClick),
+      target: self
+    )
 
     tapToClickItem = menu.addItem(
       withTitle: "Tap to click", action: #selector(toggleTapToClick), target: self)
-    updateTapToClickItem()
 
     menu.addSeparator()
 
@@ -87,20 +89,21 @@ import os
       action: #selector(toggleLoginItem),
       target: self
     )
-    updateLaunchAtLoginItem()
-
     _ = menu.addItem(
       withTitle: "Restart listeners",
       action: #selector(restartNow),
       target: self,
       keyEquivalent: "r"
     )
-
     menu.addSeparator()
-
     _ = menu.addItem(
       withTitle: "Quit", action: #selector(actionQuit), target: self, keyEquivalent: "q")
 
+    updateCapsLockSwitcherItem()
+    updateInstantSpacesItem()
+    updateMiddleClickItem()
+    updateTapToClickItem()
+    updateLaunchAtLoginItem()
     return menu
   }
 
@@ -134,25 +137,22 @@ import os
   }
 }
 
-#if DEBUG
-  // MARK: Dev-only
-  extension TrayMenu {
-    private static func terminateExistingInstance(force: Bool = true) -> Bool {
-      let runningApps = NSRunningApplication.runningApplications(
-        withBundleIdentifier: Bundle.main.bundleIdentifier!
-      ).filter {
-        $0.processIdentifier != ProcessInfo.processInfo.processIdentifier
-      }
-
-      for app in runningApps {
-        log.info("Terminating existing instance of MiddleClick (PID: \(app.processIdentifier))")
-        if force { return app.forceTerminate() } else { return app.terminate() }
-      }
-
-      return runningApps.count > 0
+extension TrayMenu {
+  private static func terminateExistingInstance(force: Bool = true) -> Bool {
+    let runningApps = NSRunningApplication.runningApplications(
+      withBundleIdentifier: Bundle.main.bundleIdentifier!
+    ).filter {
+      $0.processIdentifier != ProcessInfo.processInfo.processIdentifier
     }
+
+    for app in runningApps {
+      log.info("Terminating existing instance (PID: \(app.processIdentifier))")
+      if force { return app.forceTerminate() } else { return app.terminate() }
+    }
+
+    return runningApps.count > 0
   }
-#endif
+}
 
 // MARK: Actions
 extension TrayMenu {
@@ -176,13 +176,13 @@ extension TrayMenu {
     }
   }
 
-  @objc private func toggleCapsLockSwitch(sender: NSButton) {
-    config.capsLockSwitch = (capsLockSwitchItem.state == .off)
-    updateCapsLockSwitchItem()
+  @objc private func toggleCapsLockSwitcher(sender: NSButton) {
+    config.capsLockSwitcher = (capsLockSwitcherItem.state == .off)
+    updateCapsLockSwitcherItem()
   }
 
-  private func updateCapsLockSwitchItem() {
-    capsLockSwitchItem.state = config.capsLockSwitch ? .on : .off
+  private func updateCapsLockSwitcherItem() {
+    capsLockSwitcherItem.state = config.capsLockSwitcher ? .on : .off
   }
 
   @objc private func toggleInstantSpaces(sender: NSButton) {
@@ -192,6 +192,16 @@ extension TrayMenu {
 
   private func updateInstantSpacesItem() {
     instantSpaceSwitcher.state = config.instantSpaces ? .on : .off
+  }
+
+  @objc private func toggleMiddleClick(sender: NSButton) {
+    config.middleClick = (middleClickItem.state == .off)
+    updateMiddleClickItem()
+  }
+
+  private func updateMiddleClickItem() {
+    middleClickItem.state = config.middleClick ? .on : .off
+    tapToClickItem.isEnabled = config.middleClick
   }
 
   @objc private func toggleTapToClick(sender: NSButton) {
@@ -209,33 +219,6 @@ extension TrayMenu {
 
   @objc private func restartNow() {
     app.restartListeners()
-  }
-}
-
-extension TrayMenu: NSApplicationDelegate {
-  #if DEBUG
-    private func isRunningInXcode() -> Bool {
-      return ProcessInfo.processInfo.environment["IDE_DISABLED_OS_ACTIVITY_DT_MODE"] != nil
-    }
-  #endif
-
-  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool
-  {
-    #if DEBUG
-      guard !isRunningInXcode() || timesHandledReopen >= 2 else {
-        timesHandledReopen += 1
-        return true
-      }
-    #endif
-
-    statusItem.isVisible = true
-    Timer.scheduledTimer(withTimeInterval: 0.01, repeats: false) { _ in
-      DispatchQueue.main.async {
-        self.statusItem.button?.performClick(nil)
-      }
-    }
-
-    return true
   }
 }
 
