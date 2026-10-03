@@ -17,6 +17,7 @@ let kIOHIDEventTypeDockSwipe: Int64 = 23
 let kCGSEventDockControl: CGEventType = CGEventType(rawValue: 30)!
 let kCGSEventGesture: CGEventType = CGEventType(rawValue: 29)!
 let kCGGestureMotionHorizontal: Int64 = 1
+let kGestureMotionVertical: Int64 = 2
 let kCGMouseButtonCenter = Int64(CGMouseButton.center.rawValue)
 let kCGMouseButtonRight = Int64(CGMouseButton.right.rawValue)
 
@@ -64,9 +65,6 @@ extension CGEventMask {
     if BetterRightClick.shared.handleEvent(type: type, event: event) {
       return nil
     }
-    if BetterScreenRotation.shared.handleEvent(type: type, event: event) {
-      return nil
-    }
     if FastNavGesture.shared.handleEvent(type: type, event: event) {
       return nil
     }
@@ -74,6 +72,9 @@ extension CGEventMask {
       return nil
     }
     if MiddleClickEmu.shared.handleEvent(type: type, event: event) {
+      return nil
+    }
+    if BetterScreenRotation.shared.handleEvent(type: type, event: event) {
       return nil
     }
     return returnedEvent
