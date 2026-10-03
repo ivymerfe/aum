@@ -13,9 +13,11 @@ import os
   private var accessibilityPermissionStatusItem: NSMenuItem!
   private var accessibilityPermissionActionItem: NSMenuItem!
 
-  private var capsLockSwitcherItem: NSMenuItem!
-  private var instantSpaceSwitcher: NSMenuItem!
-  private var middleClickItem: NSMenuItem!
+  private var betterLayoutSwitcherItem: NSMenuItem!
+  private var betterScreenRotationItem: NSMenuItem!
+  private var fastNavGestureItem: NSMenuItem!
+  private var instantSpaceSwitcherItem: NSMenuItem!
+  private var middleClickEmuItem: NSMenuItem!
   private var tapToClickItem: NSMenuItem!
 
   private var launchAtLoginItem: NSMenuItem!
@@ -59,23 +61,32 @@ import os
     createMenuAccessibilityPermissionItems(menu)
     menu.addSeparator()
 
-    capsLockSwitcherItem = menu.addItem(
-      withTitle: "Caps layout switcher",
-      action: #selector(toggleCapsLockSwitcher),
+    betterLayoutSwitcherItem = menu.addItem(
+      withTitle: "BetterLayoutSwitcher",
+      action: #selector(toggleBetterLayoutSwitcher),
       target: self
     )
-
-    instantSpaceSwitcher = menu.addItem(
-      withTitle: "Instant space switcher",
-      action: #selector(toggleInstantSpaces),
+    betterScreenRotationItem = menu.addItem(
+      withTitle: "BetterScreenRotation",
+      action: #selector(toggleBetterScreenRotation),
+      target: self
+    )
+    fastNavGestureItem = menu.addItem(
+      withTitle: "FastNavGesture",
+      action: #selector(toggleFastNavGesture),
+      target: self
+    )
+    instantSpaceSwitcherItem = menu.addItem(
+      withTitle: "InstantSpaceSwitcher",
+      action: #selector(toggleInstantSpaceSwitcher),
       target: self
     )
 
     menu.addSeparator()
 
-    middleClickItem = menu.addItem(
-      withTitle: "Middle click emulation",
-      action: #selector(toggleMiddleClick),
+    middleClickEmuItem = menu.addItem(
+      withTitle: "MiddleClickEmu",
+      action: #selector(toggleMiddleClickEmu),
       target: self
     )
 
@@ -99,12 +110,97 @@ import os
     _ = menu.addItem(
       withTitle: "Quit", action: #selector(actionQuit), target: self, keyEquivalent: "q")
 
-    updateCapsLockSwitcherItem()
-    updateInstantSpacesItem()
-    updateMiddleClickItem()
+    updateBetterLayoutSwitcherItem()
+    updateBetterScreenRotationItem()
+    updateFastNavGestureItem()
+    updateInstantSpaceSwitcherItem()
+    updateMiddleClickEmuItem()
     updateTapToClickItem()
     updateLaunchAtLoginItem()
     return menu
+  }
+
+  private func updateBetterLayoutSwitcherItem() {
+    betterLayoutSwitcherItem.state = config.betterLayoutSwitcher ? .on : .off
+  }
+
+  private func updateBetterScreenRotationItem() {
+    betterScreenRotationItem.state = config.betterScreenRotation ? .on : .off
+  }
+
+  private func updateFastNavGestureItem() {
+    fastNavGestureItem.state = config.fastNavGesture ? .on : .off
+  }
+
+  private func updateInstantSpaceSwitcherItem() {
+    instantSpaceSwitcherItem.state = config.instantSpaceSwitcher ? .on : .off
+  }
+  
+  private func updateMiddleClickEmuItem() {
+    middleClickEmuItem.state = config.middleClickEmu ? .on : .off
+    tapToClickItem.isEnabled = config.middleClickEmu
+  }
+
+  private func updateTapToClickItem() {
+    tapToClickItem.state = config.tapToClick ? .on : .off
+  }
+
+  @objc private func toggleBetterLayoutSwitcher(sender: NSButton) {
+    config.betterLayoutSwitcher = (betterLayoutSwitcherItem.state == .off)
+    updateBetterLayoutSwitcherItem()
+  }
+
+  @objc private func toggleBetterScreenRotation(sender: NSButton) {
+    config.betterScreenRotation = (betterScreenRotationItem.state == .off)
+    updateBetterScreenRotationItem()
+  }
+
+  @objc private func toggleFastNavGesture(sender: NSButton) {
+    config.fastNavGesture = (fastNavGestureItem.state == .off)
+    updateFastNavGestureItem()
+  }
+
+  @objc private func toggleInstantSpaceSwitcher(sender: NSButton) {
+    config.instantSpaceSwitcher = (instantSpaceSwitcherItem.state == .off)
+    updateInstantSpaceSwitcherItem()
+  }
+
+  @objc private func toggleMiddleClickEmu(sender: NSButton) {
+    config.middleClickEmu = (middleClickEmuItem.state == .off)
+    updateMiddleClickEmuItem()
+  }
+
+  @objc private func toggleTapToClick(sender: NSButton) {
+    config.tapToClick = sender.state == .off
+    updateTapToClickItem()
+  }
+
+  @objc private func openAccessibilitySettings() {
+    if #available(macOS 10.15, *) {
+      if let url = URL(
+        string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+      {
+        NSWorkspace.shared.open(url)
+      }
+    } else {
+      let appleScript = """
+        tell application "System Preferences"
+          activate
+          reveal anchor "Privacy_Accessibility" of pane "com.apple.preference.security"
+        end tell
+        """
+      if let script = NSAppleScript(source: appleScript) {
+        script.executeAndReturnError(nil)
+      }
+    }
+  }
+
+  @objc private func actionQuit(sender: Any) {
+    NSApp.terminate(sender)
+  }
+
+  @objc private func restartNow() {
+    app.restartListeners()
   }
 
   private func createMenuAccessibilityPermissionItems(_ menu: NSMenu) {
@@ -151,74 +247,6 @@ extension TrayMenu {
     }
 
     return runningApps.count > 0
-  }
-}
-
-// MARK: Actions
-extension TrayMenu {
-  @objc private func openAccessibilitySettings() {
-    if #available(macOS 10.15, *) {
-      if let url = URL(
-        string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
-      {
-        NSWorkspace.shared.open(url)
-      }
-    } else {
-      let appleScript = """
-        tell application "System Preferences"
-          activate
-          reveal anchor "Privacy_Accessibility" of pane "com.apple.preference.security"
-        end tell
-        """
-      if let script = NSAppleScript(source: appleScript) {
-        script.executeAndReturnError(nil)
-      }
-    }
-  }
-
-  @objc private func toggleCapsLockSwitcher(sender: NSButton) {
-    config.capsLockSwitcher = (capsLockSwitcherItem.state == .off)
-    updateCapsLockSwitcherItem()
-  }
-
-  private func updateCapsLockSwitcherItem() {
-    capsLockSwitcherItem.state = config.capsLockSwitcher ? .on : .off
-  }
-
-  @objc private func toggleInstantSpaces(sender: NSButton) {
-    config.instantSpaces = (instantSpaceSwitcher.state == .off)
-    updateInstantSpacesItem()
-  }
-
-  private func updateInstantSpacesItem() {
-    instantSpaceSwitcher.state = config.instantSpaces ? .on : .off
-  }
-
-  @objc private func toggleMiddleClick(sender: NSButton) {
-    config.middleClick = (middleClickItem.state == .off)
-    updateMiddleClickItem()
-  }
-
-  private func updateMiddleClickItem() {
-    middleClickItem.state = config.middleClick ? .on : .off
-    tapToClickItem.isEnabled = config.middleClick
-  }
-
-  @objc private func toggleTapToClick(sender: NSButton) {
-    config.tapToClick = sender.state == .off
-    updateTapToClickItem()
-  }
-
-  private func updateTapToClickItem() {
-    tapToClickItem.state = config.tapToClick ? .on : .off
-  }
-
-  @objc private func actionQuit(sender: Any) {
-    NSApp.terminate(sender)
-  }
-
-  @objc private func restartNow() {
-    app.restartListeners()
   }
 }
 

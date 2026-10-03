@@ -1,0 +1,176 @@
+import CoreGraphics
+import MultitouchSupport
+
+@_silgen_name("SLSSetDisplayRotation")
+private func SLSSetDisplayRotation(_ display: CGDirectDisplayID, _ rotation: Int32) -> Int32
+
+@MainActor final class BetterScreenRotation {
+  static let shared = BetterScreenRotation()
+
+  private static let bindings: [Int64: Int32] = [34: 270, 31: 0, 35: 90]
+  private static let modifiers: CGEventFlags = [
+    .maskAlternate, .maskCommand, .maskControl, .maskShift,
+  ]
+
+  private var currentRotation: Int = 0
+  private var screenSize: CGSize = .zero
+
+  private var lastNormalizedPosition: CGPoint?
+  private let deadzone: CGFloat = 0.001
+  private let speedMultiplier: CGFloat = 1.4
+
+  func updateDisplayConfig(rotation: Int, bounds: CGRect) {
+    let rotationChanged = (self.currentRotation != rotation)
+    self.currentRotation = rotation
+    self.screenSize = bounds.size
+    if rotationChanged {
+      CGAssociateMouseAndMouseCursorPosition(rotation == 0 ? 1 : 0)
+      lastNormalizedPosition = nil
+    }
+  }
+
+  func handleEvent(type: CGEventType, event: CGEvent) -> Bool {
+    guard Config.shared.betterScreenRotation else { return false }
+
+    if type == .keyDown {
+      let keycode = event.getIntegerValueField(.keyboardEventKeycode)
+      guard event.flags.intersection(Self.modifiers) == .maskAlternate else { return false }
+      guard let degrees = Self.bindings[keycode] else { return false }
+      if event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
+        _ = SLSSetDisplayRotation(CGMainDisplayID(), degrees)
+      }
+      return true
+    }
+
+    if type == .scrollWheel {
+      if currentRotation != 0 {
+        let dy = event.getIntegerValueField(.scrollWheelEventDeltaAxis1)
+        let dx = event.getIntegerValueField(.scrollWheelEventDeltaAxis2)
+        let ptDy = event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1)
+        let ptDx = event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2)
+        let pointDy = event.getIntegerValueField(.scrollWheelEventPointDeltaAxis1)
+        let pointDx = event.getIntegerValueField(.scrollWheelEventPointDeltaAxis2)
+
+        let (newDx, newDy) = rotate(x: dx, y: dy)
+        let (newPtDx, newPtDy) = rotate(x: ptDx, y: ptDy)
+        let (newPointDx, newPointDy) = rotate(x: pointDx, y: pointDy)
+
+        event.setIntegerValueField(.scrollWheelEventDeltaAxis1, value: newDy)
+        event.setIntegerValueField(.scrollWheelEventDeltaAxis2, value: newDx)
+        event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: newPtDy)
+        event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: newPtDx)
+        event.setIntegerValueField(.scrollWheelEventPointDeltaAxis1, value: newPointDy)
+        event.setIntegerValueField(.scrollWheelEventPointDeltaAxis2, value: newPointDx)
+      }
+      return false
+    }
+    if type == kCGSEventGesture {
+      // TODO
+      return false
+    }
+    if type == kCGSEventDockControl {
+      let gestureType = event.getIntegerValueField(kCGEventGestureHIDType)
+      if currentRotation != 0, gestureType == kIOHIDEventTypeDockSwipe {
+        let motion = event.getIntegerValueField(kCGEventGestureSwipeMotion)
+        if motion == 1 || motion == 2 {
+          let horizontal = motion == 1
+          let (ux, uy) = rotate(x: horizontal ? 1.0 : 0.0, y: horizontal ? 0.0 : -1.0)
+          let newMotion: Int64 = abs(ux) > 0.5 ? 1 : 2
+          let sign = newMotion == 1 ? ux : -uy
+
+          let progress = event.getDoubleValueField(kCGEventGestureSwipeProgress)
+          let vx = event.getDoubleValueField(kCGEventGestureSwipeVelocityX)
+          let vy = event.getDoubleValueField(CGEventField(rawValue: 130)!)
+          let (rx, ry) = rotate(x: vx, y: -vy)
+
+          event.setIntegerValueField(kCGEventGestureSwipeMotion, value: newMotion)
+          event.setDoubleValueField(kCGEventGestureSwipeProgress, value: progress * sign)
+          event.setDoubleValueField(kCGEventGestureSwipeVelocityX, value: rx)
+          event.setDoubleValueField(CGEventField(rawValue: 130)!, value: -ry)
+        }
+      }
+    }
+    return false
+  }
+
+  func handleTouch(touches: UnsafePointer<MTTouch>?, nFingers: Int32) {
+    guard Config.shared.betterScreenRotation else { return }
+    guard currentRotation != 0 else { return }
+    guard nFingers == 1, let touch = touches?.pointee else {
+      lastNormalizedPosition = nil
+      return
+    }
+    let currentNormX = CGFloat(touch.normalizedVector.position.x)
+    let currentNormY = CGFloat(1.0 - touch.normalizedVector.position.y)
+    let currentNormPoint = CGPoint(x: currentNormX, y: currentNormY)
+
+    guard let lastNormPoint = lastNormalizedPosition else {
+      lastNormalizedPosition = currentNormPoint
+      return
+    }
+    let rawDeltaX = currentNormPoint.x - lastNormPoint.x
+    let rawDeltaY = currentNormPoint.y - lastNormPoint.y
+    let distance = sqrt(rawDeltaX * rawDeltaX + rawDeltaY * rawDeltaY)
+    if distance < deadzone {
+      return
+    }
+    lastNormalizedPosition = currentNormPoint
+    let (rotatedDeltaX, rotatedDeltaY): (CGFloat, CGFloat) =
+      switch currentRotation {
+      case 90: (-rawDeltaY, rawDeltaX)
+      case 180: (-rawDeltaX, -rawDeltaY)
+      case 270: (rawDeltaY, -rawDeltaX)
+      default: (rawDeltaX, rawDeltaY)
+      }
+    let accel = 1.0 + (distance * 15.0)
+    guard let currentCursorPosition = CGEvent(source: nil)?.location else { return }
+    let newX =
+      currentCursorPosition.x + (rotatedDeltaX * screenSize.width * speedMultiplier * accel)
+    let newY =
+      currentCursorPosition.y + (rotatedDeltaY * screenSize.height * speedMultiplier * accel)
+
+    let clampedX = max(0, min(screenSize.width - 1, newX))
+    let clampedY = max(0, min(screenSize.height - 1, newY))
+
+    CGWarpMouseCursorPosition(CGPoint(x: clampedX, y: clampedY))
+  }
+
+  func rotate(x: Int64, y: Int64) -> (Int64, Int64) {
+    switch currentRotation {
+    case 90:
+      return (-y, x)
+    case 180:
+      return (-x, -y)
+    case 270:
+      return (y, -x)
+    default:
+      return (x, y)
+    }
+  }
+
+  func rotate(x: Double, y: Double) -> (Double, Double) {
+    switch currentRotation {
+    case 90:
+      return (-y, x)
+    case 180:
+      return (-x, -y)
+    case 270:
+      return (y, -x)
+    default:
+      return (x, y)
+    }
+  }
+
+  func rotate(x: CGFloat, y: CGFloat) -> (CGFloat, CGFloat) {
+    switch currentRotation {
+    case 90:
+      return (-y, x)
+    case 180:
+      return (-x, -y)
+    case 270:
+      return (y, -x)
+    default:
+      return (x, y)
+    }
+  }
+}
