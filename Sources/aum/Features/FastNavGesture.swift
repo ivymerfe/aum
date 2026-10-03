@@ -8,6 +8,9 @@ import Foundation
   private static let kLeftBracketKeyCode: UInt16 = 33
   private static let kRightBracketKeyCode: UInt16 = 30
 
+  private static let gestureDelta = 0.06
+  private static let invert = false
+
   var tracking = false
   var fired = false
   var startY: CGFloat = 0
@@ -36,9 +39,9 @@ import Foundation
     if fired { return false }
 
     let dy = y - startY
-    if abs(dy) > 0.06 {
+    if abs(dy) > Self.gestureDelta {
       fired = true
-      fireNav(dy > 0 ? Self.kLeftBracketKeyCode : Self.kRightBracketKeyCode)
+      fireNav((dy > 0) != Self.invert ? Self.kRightBracketKeyCode : Self.kLeftBracketKeyCode)
     }
     return false
   }
