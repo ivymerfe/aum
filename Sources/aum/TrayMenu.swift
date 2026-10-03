@@ -14,6 +14,7 @@ import os
   private var accessibilityPermissionActionItem: NSMenuItem!
 
   private var betterLayoutSwitcherItem: NSMenuItem!
+  private var betterRightClickItem: NSMenuItem!
   private var betterScreenRotationItem: NSMenuItem!
   private var fastNavGestureItem: NSMenuItem!
   private var instantSpaceSwitcherItem: NSMenuItem!
@@ -66,6 +67,11 @@ import os
       action: #selector(toggleBetterLayoutSwitcher),
       target: self
     )
+    betterRightClickItem = menu.addItem(
+      withTitle: "BetterRightClick",
+      action: #selector(toggleBetterRightClick),
+      target: self
+    )
     betterScreenRotationItem = menu.addItem(
       withTitle: "BetterScreenRotation",
       action: #selector(toggleBetterScreenRotation),
@@ -111,6 +117,7 @@ import os
       withTitle: "Quit", action: #selector(actionQuit), target: self, keyEquivalent: "q")
 
     updateBetterLayoutSwitcherItem()
+    updateBetterRightClickItem()
     updateBetterScreenRotationItem()
     updateFastNavGestureItem()
     updateInstantSpaceSwitcherItem()
@@ -125,6 +132,10 @@ import os
     BetterLayoutSwitcher.shared.reload()
   }
 
+  private func updateBetterRightClickItem() {
+    betterRightClickItem.state = config.betterRightClick ? .on : .off
+  }
+  
   private func updateBetterScreenRotationItem() {
     betterScreenRotationItem.state = config.betterScreenRotation ? .on : .off
   }
@@ -151,6 +162,11 @@ import os
     updateBetterLayoutSwitcherItem()
   }
 
+  @objc private func toggleBetterRightClick(sender: NSButton) {
+    config.betterRightClick = (betterRightClickItem.state == .off)
+    updateBetterRightClickItem()
+  }
+  
   @objc private func toggleBetterScreenRotation(sender: NSButton) {
     config.betterScreenRotation = (betterScreenRotationItem.state == .off)
     updateBetterScreenRotationItem()

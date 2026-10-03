@@ -18,6 +18,7 @@ let kCGSEventDockControl: CGEventType = CGEventType(rawValue: 30)!
 let kCGSEventGesture: CGEventType = CGEventType(rawValue: 29)!
 let kCGGestureMotionHorizontal: Int64 = 1
 let kCGMouseButtonCenter = Int64(CGMouseButton.center.rawValue)
+let kCGMouseButtonRight = Int64(CGMouseButton.right.rawValue)
 
 enum CGSGesturePhase: Int64 {
   case began = 1
@@ -58,6 +59,9 @@ extension CGEventMask {
       return returnedEvent
     }
     if BetterLayoutSwitcher.shared.handleEvent(type: type, event: event) {
+      return nil
+    }
+    if BetterRightClick.shared.handleEvent(type: type, event: event) {
       return nil
     }
     if BetterScreenRotation.shared.handleEvent(type: type, event: event) {

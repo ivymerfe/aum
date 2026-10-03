@@ -30,6 +30,7 @@ let restartLog = Logger(
     _, touches, nFingers, _, _ in
 
     BetterScreenRotation.shared.handleTouch(touches: touches, nFingers: nFingers)
+    BetterRightClick.shared.handleTouch(touches: touches, nFingers: nFingers)
     MiddleClickEmu.shared.handleTouch(touches: touches, nFingers: nFingers)
     return
   }
