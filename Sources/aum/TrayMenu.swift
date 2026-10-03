@@ -18,8 +18,11 @@ import os
   private var betterScreenRotationItem: NSMenuItem!
   private var fastNavGestureItem: NSMenuItem!
   private var instantSpaceSwitcherItem: NSMenuItem!
+  
   private var middleClickEmuItem: NSMenuItem!
   private var tapToClickItem: NSMenuItem!
+
+  private var quickAppSwitcherItem: NSMenuItem!
 
   private var launchAtLoginItem: NSMenuItem!
   private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -101,6 +104,14 @@ import os
 
     menu.addSeparator()
 
+    quickAppSwitcherItem = menu.addItem(
+      withTitle: "QuickAppSwitcher",
+      action: #selector(toggleQuickAppSwitcher),
+      target: self
+    )
+    
+    menu.addSeparator()
+
     launchAtLoginItem = menu.addItem(
       withTitle: "Launch at login",
       action: #selector(toggleLoginItem),
@@ -121,8 +132,12 @@ import os
     updateBetterScreenRotationItem()
     updateFastNavGestureItem()
     updateInstantSpaceSwitcherItem()
+
     updateMiddleClickEmuItem()
     updateTapToClickItem()
+
+    updateQuickAppSwitcherItem()
+    
     updateLaunchAtLoginItem()
     return menu
   }
@@ -157,6 +172,10 @@ import os
     tapToClickItem.state = config.tapToClick ? .on : .off
   }
 
+  private func updateQuickAppSwitcherItem() {
+    quickAppSwitcherItem.state = config.quickAppSwitcher ? .on : .off
+  }
+  
   @objc private func toggleBetterLayoutSwitcher(sender: NSButton) {
     config.betterLayoutSwitcher = (betterLayoutSwitcherItem.state == .off)
     updateBetterLayoutSwitcherItem()
@@ -190,6 +209,11 @@ import os
   @objc private func toggleTapToClick(sender: NSButton) {
     config.tapToClick = sender.state == .off
     updateTapToClickItem()
+  }
+  
+  @objc private func toggleQuickAppSwitcher(sender: NSButton) {
+    config.quickAppSwitcher = sender.state == .off
+    updateQuickAppSwitcherItem()
   }
 
   @objc private func openAccessibilitySettings() {

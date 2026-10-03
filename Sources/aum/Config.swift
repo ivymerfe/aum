@@ -6,4 +6,5 @@
     @UserDefault var instantSpaceSwitcher = true
     @UserDefault var middleClickEmu = true
     @UserDefault var tapToClick = SystemPermissions.getIsSystemTapToClickEnabled
+    @UserDefault var quickAppSwitcher = true
 }

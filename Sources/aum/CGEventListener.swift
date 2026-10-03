@@ -77,6 +77,9 @@ extension CGEventMask {
     if BetterScreenRotation.shared.handleEvent(type: type, event: event) {
       return nil
     }
+    if QuickAppSwitcher.shared.handleEvent(type: type, event: event) {
+      return nil
+    }
     return returnedEvent
   }
 

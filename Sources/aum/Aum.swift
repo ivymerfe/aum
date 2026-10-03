@@ -25,7 +25,7 @@ let restartLog = Logger(
   let accessibilityMonitor: AccessibilityMonitor = AccessibilityMonitor()
 
   private var currentDeviceList: [MTDevice] = []
-  
+
   private let touchCallback: MTFrameCallbackFunction = {
     _, touches, nFingers, _, _ in
 
@@ -53,6 +53,9 @@ let restartLog = Logger(
     log.info("Starting listeners...")
 
     registerTouchCallback()
+    if let front = NSWorkspace.shared.frontmostApplication {
+      QuickAppSwitcher.shared.appActivated(front)
+    }
     observeSystemNotifications()
     multitouchManager.setupMultitouchListener()
     setupDisplayReconfigurationCallback()
@@ -136,6 +139,16 @@ let restartLog = Logger(
       name: NSWorkspace.sessionDidBecomeActiveNotification,
       object: nil
     )
+    center.addObserver(
+      forName: NSWorkspace.didActivateApplicationNotification,
+      object: nil,
+      queue: .main
+    ) { note in
+      guard
+        let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+      else { return }
+      Task { @MainActor in QuickAppSwitcher.shared.appActivated(app) }
+    }
   }
 
   @objc private func receiveSessionResignActiveNote(_ note: Notification) {
