@@ -1,29 +1,27 @@
+import AppKit
 import CoreGraphics
 import Foundation
-import AppKit
 
 @MainActor final class FastNavGesture {
   static let shared = FastNavGesture()
 
   var navTracking = false
   var navTouching = false
-  var navLocked = false
-  var navFired = false
+  var navCancelled = false
   var navStart = CGPoint.zero
-
   var navStartTime: TimeInterval = 0
   var navStartDist: CGFloat = 0
-  var navLastFire: TimeInterval = 0
-  var navCancelled = false
+  var navLast = CGPoint.zero
+  var navLastTime: TimeInterval = 0
 
   func handleEvent(type: CGEventType, event: CGEvent) -> Bool {
     guard Config.shared.fastNavGesture else { return false }
 
     if type == .scrollWheel {
-      if navLocked
-        && (navTouching || event.getIntegerValueField(.scrollWheelEventMomentumPhase) != 0)
-      {
-        return true
+      if navTouching && !navCancelled {
+        event.setIntegerValueField(.scrollWheelEventDeltaAxis2, value: 0)
+        event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: 0)
+        event.setIntegerValueField(.scrollWheelEventPointDeltaAxis2, value: 0)
       }
     }
     if type == kCGSEventGesture {
@@ -39,13 +37,22 @@ import AppKit
 
     let touches = Array(ns.touches(matching: .touching, in: nil))
     guard touches.count == 2 else {
+      if touches.count < 2 && navTracking && !navCancelled {
+        let dx = navLast.x - navStart.x
+        let dy = navLast.y - navStart.y
+        let elapsed = navLastTime - navStartTime
+        let adx = abs(dx)
+        let ady = abs(dy)
+        if adx > ady * 2, ady <= 0.02, elapsed <= 0.2
+        {
+          fireNav(dx > 0 ? 33 : 30)
+        }
+      }
       navTouching = false
       navTracking = false
-      navFired = false
       navCancelled = false
       return
     }
-
     let a = touches[0].normalizedPosition
     let (ax, ay) = BetterScreenRotation.shared.rotate(x: a.x, y: -a.y)
     let b = touches[1].normalizedPosition
@@ -54,42 +61,27 @@ import AppKit
     let dist = hypot(ax - bx, ay - by)
     let now = ProcessInfo.processInfo.systemUptime
     navTouching = true
-
     if !navTracking {
       navTracking = true
-      navFired = false
       navCancelled = false
       navStart = c
       navStartDist = dist
       navStartTime = now
+      navLast = c
+      navLastTime = now
       return
     }
+    if navCancelled { return }
 
-    if navFired || navCancelled { return }
-
-    let elapsed = now - navStartTime
-    let dx = c.x - navStart.x
-    let dy = c.y - navStart.y
-    let adx = abs(dx)
-    let ady = abs(dy)
-
-    if abs(dist - navStartDist) > 0.05 || ady > 0.04 || elapsed > 0.15 {
+    if abs(dist - navStartDist) > 0.1 || abs(c.y - navStart.y) > 0.02 || now - navStartTime > 0.2 {
       navCancelled = true
       return
     }
+    navLast = c
+    navLastTime = now
+  }
 
-    guard adx > 0.05, adx > ady * 3 else { return }
-
-    let velocity = adx / CGFloat(max(elapsed, 0.001))
-    guard velocity > 0.3 else {
-      navCancelled = true
-      return
-    }
-
-    guard now - navLastFire > 0.35 else { return }
-    navFired = true
-    navLastFire = now
-    let code: CGKeyCode = dx > 0 ? 33 : 30
+  private func fireNav(_ code: CGKeyCode) {
     for down in [true, false] {
       let e = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down)
       e?.flags = .maskCommand
