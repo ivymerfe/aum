@@ -122,6 +122,7 @@ import os
 
   private func updateBetterLayoutSwitcherItem() {
     betterLayoutSwitcherItem.state = config.betterLayoutSwitcher ? .on : .off
+    BetterLayoutSwitcher.shared.reload()
   }
 
   private func updateBetterScreenRotationItem() {

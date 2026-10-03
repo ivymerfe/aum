@@ -1,22 +1,51 @@
 import Carbon
 
+@_silgen_name("IOHIDEventSystemClientCreate")
+private func IOHIDEventSystemClientCreate(_ allocator: CFAllocator?) -> UnsafeMutableRawPointer?
+
+@_silgen_name("IOHIDEventSystemClientSetProperty")
+private func IOHIDEventSystemClientSetProperty(
+  _ client: UnsafeMutableRawPointer, _ key: CFString, _ value: CFTypeRef
+) -> Bool
+
 @MainActor final class BetterLayoutSwitcher {
   static let shared = BetterLayoutSwitcher()
 
-  private static let kCapsLockKeyCode: Int64 = 57
+  private static let kF18KeyCode: Int64 = 79
 
+  func reload() {
+    if Config.shared.betterLayoutSwitcher {
+      Self.setKeyMapping([
+        [
+          "HIDKeyboardModifierMappingSrc": 0x7_0000_0039,
+          "HIDKeyboardModifierMappingDst": 0x7_0000_006D,
+        ]
+      ])
+    } else {
+      Self.setKeyMapping([])
+    }
+  }
+  
   func handleEvent(type: CGEventType, event: CGEvent) -> Bool {
     guard Config.shared.betterLayoutSwitcher else { return false }
-    if type == .flagsChanged {
-      let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-      if keyCode == Self.kCapsLockKeyCode {
-        if event.flags.contains(.maskAlphaShift) {
-          Self.switchToNextInputSource()
-        }
-        return true
+    guard event.getIntegerValueField(.keyboardEventKeycode) == Self.kF18KeyCode else { return false }
+  
+    if type == .keyDown {
+      if event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
+        Self.switchToNextInputSource()
       }
+      return true
+    }
+    if type == .keyUp {
+      return true
     }
     return false
+  }
+
+  private static func setKeyMapping(_ mapping: [[String: Int]]) {
+    guard let client = IOHIDEventSystemClientCreate(kCFAllocatorDefault) else { return }
+    _ = IOHIDEventSystemClientSetProperty(client, "UserKeyMapping" as CFString, mapping as CFArray)
+    Unmanaged<AnyObject>.fromOpaque(client).release()
   }
 
   static func switchToNextInputSource() {

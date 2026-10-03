@@ -45,8 +45,34 @@ extension CGEventMask {
   private var eventTap: CFMachPort?
   private var runLoopSrc: CFRunLoopSource?
 
-  private let eventTapCallback: CGEventTapCallBack = { _, type, event, _ in
-    CGEventListener.handle(type: type, event: event)
+  private init() {
+  }
+
+  private let eventTapCallback: CGEventTapCallBack = {
+    _, type, event, _ in
+    
+    let returnedEvent = Unmanaged.passUnretained(event)
+    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+      InstantSpaceSwitcher.shared.syntheticEventsToPassThrough = 0
+      shared.reenable()
+      return returnedEvent
+    }
+    if BetterLayoutSwitcher.shared.handleEvent(type: type, event: event) {
+      return nil
+    }
+    if BetterScreenRotation.shared.handleEvent(type: type, event: event) {
+      return nil
+    }
+    if FastNavGesture.shared.handleEvent(type: type, event: event) {
+      return nil
+    }
+    if InstantSpaceSwitcher.shared.handleEvent(type: type, event: event) {
+      return nil
+    }
+    if MiddleClickEmu.shared.handleEvent(type: type, event: event) {
+      return nil
+    }
+    return returnedEvent
   }
 
   func start() -> Bool {
@@ -58,7 +84,7 @@ extension CGEventMask {
 
     guard
       let tap = CGEvent.tapCreate(
-        tap: .cgSessionEventTap,
+        tap: .cghidEventTap,
         place: .headInsertEventTap,
         options: .defaultTap,
         eventsOfInterest: .from(
@@ -101,31 +127,5 @@ extension CGEventMask {
 
   func reenable() {
     if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
-  }
-
-  static func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-    let returnedEvent = Unmanaged.passUnretained(event)
-
-    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-      InstantSpaceSwitcher.shared.syntheticEventsToPassThrough = 0
-      shared.reenable()
-      return returnedEvent
-    }
-    if BetterLayoutSwitcher.shared.handleEvent(type: type, event: event) {
-      return nil
-    }
-    if BetterScreenRotation.shared.handleEvent(type: type, event: event) {
-      return nil
-    }
-    if FastNavGesture.shared.handleEvent(type: type, event: event) {
-      return nil
-    }
-    if InstantSpaceSwitcher.shared.handleEvent(type: type, event: event) {
-      return nil
-    }
-    if MiddleClickEmu.shared.handleEvent(type: type, event: event) {
-      return nil
-    }
-    return returnedEvent
   }
 }

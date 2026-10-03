@@ -61,6 +61,7 @@ let restartLog = Logger(
     accessibilityMonitor.addListener { becameTrusted in
       if becameTrusted {
         _ = CGEventListener.shared.start()
+        BetterLayoutSwitcher.shared.reload()
       } else {
         trayMenu.isStatusItemVisible = true
         CGEventListener.shared.stop()
