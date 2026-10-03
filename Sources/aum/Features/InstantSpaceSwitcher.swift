@@ -123,14 +123,23 @@ func SLSCopyManagedDisplaySpaces(_ cid: Int32) -> Unmanaged<CFArray>?
 
         if targetIndex >= 0 && targetIndex < spaces.count {
           lastGestureTime = CFAbsoluteTimeGetCurrent()
-          let b = postSwipe(phase: .began, right: right)
-          let c = postSwipe(phase: .changed, right: right)
-          let e = postSwipe(phase: .ended, right: right)
-          return b && c && e
+          return focusRelative(right: right, count: 1)
         }
       }
     }
     return false
+  }
+
+  func focusRelative(right: Bool, count: Int) -> Bool {
+    for _ in 1...count {
+      let b = postSwipe(phase: .began, right: right)
+      let c = postSwipe(phase: .changed, right: right)
+      let e = postSwipe(phase: .ended, right: right)
+      if !b || !c || !e {
+        return false
+      }
+    }
+    return true
   }
 
   func postSwipe(phase: CGSGesturePhase, right: Bool) -> Bool {
