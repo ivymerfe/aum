@@ -41,7 +41,7 @@ import Foundation
     let dy = y - startY
     if abs(dy) > Self.gestureDelta {
       fired = true
-      fireNav((dy > 0) != Self.invert ? Self.kRightBracketKeyCode : Self.kLeftBracketKeyCode)
+      fireNav((dy > 0) != Self.invert ? Self.kLeftBracketKeyCode : Self.kRightBracketKeyCode)
     }
     return false
   }
