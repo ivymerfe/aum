@@ -12,12 +12,17 @@ private func SLSSetDisplayRotation(_ display: CGDirectDisplayID, _ rotation: Int
     .maskAlternate, .maskCommand, .maskControl, .maskShift,
   ]
 
+  private let deadzone: CGFloat = 0.0005
+  private let speedMultiplier: CGFloat = 1.4
+  private let baseGain: CGFloat = 0.25
+  private let speedScale: CGFloat = 120.0
+  private let accelCurve: CGFloat = 1.4
+
   private var currentRotation: Int = 0
   private var screenSize: CGSize = .zero
 
   private var lastNormalizedPosition: CGPoint?
-  private let deadzone: CGFloat = 0.001
-  private let speedMultiplier: CGFloat = 1.4
+  private var cursorPosition: CGPoint?
 
   func updateDisplayConfig(rotation: Int, bounds: CGRect) {
     let rotationChanged = (self.currentRotation != rotation)
@@ -26,6 +31,7 @@ private func SLSSetDisplayRotation(_ display: CGDirectDisplayID, _ rotation: Int
     if rotationChanged {
       CGAssociateMouseAndMouseCursorPosition(rotation == 0 ? 1 : 0)
       lastNormalizedPosition = nil
+      cursorPosition = nil
     }
   }
 
@@ -98,41 +104,38 @@ private func SLSSetDisplayRotation(_ display: CGDirectDisplayID, _ rotation: Int
     guard currentRotation != 0 else { return }
     guard nFingers == 1, let touch = touches?.pointee else {
       lastNormalizedPosition = nil
+      cursorPosition = nil
       return
     }
-    let currentNormX = CGFloat(touch.normalizedVector.position.x)
-    let currentNormY = CGFloat(1.0 - touch.normalizedVector.position.y)
-    let currentNormPoint = CGPoint(x: currentNormX, y: currentNormY)
+    let current = CGPoint(
+      x: CGFloat(touch.normalizedVector.position.x),
+      y: CGFloat(1.0 - touch.normalizedVector.position.y))
 
-    guard let lastNormPoint = lastNormalizedPosition else {
-      lastNormalizedPosition = currentNormPoint
+    guard let last = lastNormalizedPosition, var pos = cursorPosition else {
+      lastNormalizedPosition = current
+      cursorPosition = CGEvent(source: nil)?.location
       return
     }
-    let rawDeltaX = currentNormPoint.x - lastNormPoint.x
-    let rawDeltaY = currentNormPoint.y - lastNormPoint.y
-    let distance = sqrt(rawDeltaX * rawDeltaX + rawDeltaY * rawDeltaY)
-    if distance < deadzone {
-      return
-    }
-    lastNormalizedPosition = currentNormPoint
-    let (rotatedDeltaX, rotatedDeltaY): (CGFloat, CGFloat) =
+
+    let dx = current.x - last.x
+    let dy = current.y - last.y
+    let distance = sqrt(dx * dx + dy * dy)
+    if distance < deadzone { return }
+    lastNormalizedPosition = current
+
+    let (rx, ry): (CGFloat, CGFloat) =
       switch currentRotation {
-      case 90: (-rawDeltaY, rawDeltaX)
-      case 180: (-rawDeltaX, -rawDeltaY)
-      case 270: (rawDeltaY, -rawDeltaX)
-      default: (rawDeltaX, rawDeltaY)
+      case 90: (-dy, dx)
+      case 180: (-dx, -dy)
+      case 270: (dy, -dx)
+      default: (dx, dy)
       }
-    let accel = 1.0 + (distance * 15.0)
-    guard let currentCursorPosition = CGEvent(source: nil)?.location else { return }
-    let newX =
-      currentCursorPosition.x + (rotatedDeltaX * screenSize.width * speedMultiplier * accel)
-    let newY =
-      currentCursorPosition.y + (rotatedDeltaY * screenSize.height * speedMultiplier * accel)
 
-    let clampedX = max(0, min(screenSize.width - 1, newX))
-    let clampedY = max(0, min(screenSize.height - 1, newY))
-
-    CGWarpMouseCursorPosition(CGPoint(x: clampedX, y: clampedY))
+    let gain = speedMultiplier * (baseGain + pow(distance * speedScale, accelCurve))
+    pos.x = max(0, min(screenSize.width - 1, pos.x + rx * screenSize.width * gain))
+    pos.y = max(0, min(screenSize.height - 1, pos.y + ry * screenSize.height * gain))
+    cursorPosition = pos
+    CGWarpMouseCursorPosition(pos)
   }
 
   func rotate(x: Int64, y: Int64) -> (Int64, Int64) {
