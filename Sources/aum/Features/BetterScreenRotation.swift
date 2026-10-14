@@ -13,10 +13,10 @@ private func SLSSetDisplayRotation(_ display: CGDirectDisplayID, _ rotation: Int
   ]
 
   private let deadzone: CGFloat = 0.0005
-  private let speedMultiplier: CGFloat = 1.4
-  private let baseGain: CGFloat = 0.25
-  private let speedScale: CGFloat = 120.0
-  private let accelCurve: CGFloat = 1.4
+  private let speedMultiplier: CGFloat = 1.5
+  private let baseGain: CGFloat = 0.5
+  private let speedScale: CGFloat = 80.0
+  private let accelCurve: CGFloat = 1.2
 
   private var currentRotation: Int = 0
   private var screenSize: CGSize = .zero
