@@ -14,11 +14,12 @@ import os
   private var accessibilityPermissionActionItem: NSMenuItem!
 
   private var betterLayoutSwitcherItem: NSMenuItem!
+  private var betterMouseScrollingItem: NSMenuItem!
   private var betterRightClickItem: NSMenuItem!
   private var betterScreenRotationItem: NSMenuItem!
   private var fastNavGestureItem: NSMenuItem!
   private var instantSpaceSwitcherItem: NSMenuItem!
-  
+
   private var middleClickEmuItem: NSMenuItem!
   private var tapToClickItem: NSMenuItem!
 
@@ -70,6 +71,11 @@ import os
       action: #selector(toggleBetterLayoutSwitcher),
       target: self
     )
+    betterMouseScrollingItem = menu.addItem(
+      withTitle: "BetterMouseScrolling",
+      action: #selector(toggleBetterMouseScrolling),
+      target: self
+    )
     betterRightClickItem = menu.addItem(
       withTitle: "BetterRightClick",
       action: #selector(toggleBetterRightClick),
@@ -109,7 +115,7 @@ import os
       action: #selector(toggleQuickAppSwitcher),
       target: self
     )
-    
+
     menu.addSeparator()
 
     launchAtLoginItem = menu.addItem(
@@ -128,6 +134,7 @@ import os
       withTitle: "Quit", action: #selector(actionQuit), target: self, keyEquivalent: "q")
 
     updateBetterLayoutSwitcherItem()
+    updateBetterMouseScrollingItem()
     updateBetterRightClickItem()
     updateBetterScreenRotationItem()
     updateFastNavGestureItem()
@@ -137,7 +144,7 @@ import os
     updateTapToClickItem()
 
     updateQuickAppSwitcherItem()
-    
+
     updateLaunchAtLoginItem()
     return menu
   }
@@ -147,10 +154,14 @@ import os
     BetterLayoutSwitcher.shared.reload()
   }
 
+  private func updateBetterMouseScrollingItem() {
+    betterMouseScrollingItem.state = config.betterMouseScrolling ? .on : .off
+  }
+
   private func updateBetterRightClickItem() {
     betterRightClickItem.state = config.betterRightClick ? .on : .off
   }
-  
+
   private func updateBetterScreenRotationItem() {
     betterScreenRotationItem.state = config.betterScreenRotation ? .on : .off
   }
@@ -162,7 +173,7 @@ import os
   private func updateInstantSpaceSwitcherItem() {
     instantSpaceSwitcherItem.state = config.instantSpaceSwitcher ? .on : .off
   }
-  
+
   private func updateMiddleClickEmuItem() {
     middleClickEmuItem.state = config.middleClickEmu ? .on : .off
     tapToClickItem.isEnabled = config.middleClickEmu
@@ -175,17 +186,22 @@ import os
   private func updateQuickAppSwitcherItem() {
     quickAppSwitcherItem.state = config.quickAppSwitcher ? .on : .off
   }
-  
+
   @objc private func toggleBetterLayoutSwitcher(sender: NSButton) {
     config.betterLayoutSwitcher = (betterLayoutSwitcherItem.state == .off)
     updateBetterLayoutSwitcherItem()
+  }
+
+  @objc private func toggleBetterMouseScrolling(sender: NSButton) {
+    config.betterMouseScrolling = (betterMouseScrollingItem.state == .off)
+    updateBetterMouseScrollingItem()
   }
 
   @objc private func toggleBetterRightClick(sender: NSButton) {
     config.betterRightClick = (betterRightClickItem.state == .off)
     updateBetterRightClickItem()
   }
-  
+
   @objc private func toggleBetterScreenRotation(sender: NSButton) {
     config.betterScreenRotation = (betterScreenRotationItem.state == .off)
     updateBetterScreenRotationItem()
@@ -210,7 +226,7 @@ import os
     config.tapToClick = sender.state == .off
     updateTapToClickItem()
   }
-  
+
   @objc private func toggleQuickAppSwitcher(sender: NSButton) {
     config.quickAppSwitcher = sender.state == .off
     updateQuickAppSwitcherItem()

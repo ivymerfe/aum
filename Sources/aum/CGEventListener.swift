@@ -52,7 +52,7 @@ extension CGEventMask {
 
   private let eventTapCallback: CGEventTapCallBack = {
     _, type, event, _ in
-    
+
     let returnedEvent = Unmanaged.passUnretained(event)
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
       InstantSpaceSwitcher.shared.syntheticEventsToPassThrough = 0
@@ -60,6 +60,9 @@ extension CGEventMask {
       return returnedEvent
     }
     if BetterLayoutSwitcher.shared.handleEvent(type: type, event: event) {
+      return nil
+    }
+    if BetterMouseScrolling.shared.handleEvent(type: type, event: event) {
       return nil
     }
     if BetterRightClick.shared.handleEvent(type: type, event: event) {
