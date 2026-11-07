@@ -309,6 +309,16 @@ struct SpaceSnapshot {
         armRepeat()
         return true
       }
+      if flags.contains(.maskAlternate),
+        flags.intersection([.maskCommand, .maskControl, .maskShift]).isEmpty,
+        let slot = Self.slotKeys[code]
+      {
+        swallowed.insert(code)
+        if event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
+          jump(full: slot.full, index: slot.index)
+        }
+        return true
+      }
       return false
 
     case .keyUp:
