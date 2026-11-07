@@ -56,6 +56,7 @@ let restartLog = Logger(
     if let front = NSWorkspace.shared.frontmostApplication {
       AppSwitcher.shared.appActivated(front)
     }
+    SpaceSwitcher.shared.startTracking()
     observeSystemNotifications()
     multitouchManager.setupMultitouchListener()
     setupDisplayReconfigurationCallback()

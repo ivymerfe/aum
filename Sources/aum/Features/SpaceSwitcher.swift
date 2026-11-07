@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import Foundation
 
@@ -10,13 +11,182 @@ func SLSGetActiveSpace(_ cid: Int32) -> UInt64
 @_silgen_name("SLSCopyManagedDisplaySpaces")
 func SLSCopyManagedDisplaySpaces(_ cid: Int32) -> Unmanaged<CFArray>?
 
+struct SpaceInfo {
+  let id: UInt64
+  let isFull: Bool
+}
+
+struct SpaceSnapshot {
+  let spaces: [SpaceInfo]
+  let active: UInt64
+  let all: Set<UInt64>
+}
+
 @MainActor final class SpaceSwitcher {
   static let shared = SpaceSwitcher()
 
   var syntheticEventsToPassThrough: Int = 0
   var lastGestureTime: CFAbsoluteTime = 0
   var swipeTracking = false
-  var swipeFired = false
+
+  private let stepWidth = 0.25
+  private var stepsApplied = 0
+  private var startSpace: UInt64 = 0
+  private var frozenDesktops: [UInt64] = []
+  private var frozenFullscreens: [UInt64] = []
+  private var virtualFull = false
+  private var virtualIndex = 0
+  private var virtualSpace: UInt64 = 0
+  private var expectedFinal: UInt64?
+  private var desktopMRU: [UInt64] = []
+  private var fullscreenMRU: [UInt64] = []
+  private var knownSpaces: Set<UInt64> = []
+
+  func startTracking() {
+    NSWorkspace.shared.notificationCenter.addObserver(
+      forName: NSWorkspace.activeSpaceDidChangeNotification,
+      object: nil,
+      queue: .main
+    ) { _ in
+      Task { @MainActor in SpaceSwitcher.shared.spaceChanged() }
+    }
+    spaceChanged()
+  }
+
+  private func spaceChanged() {
+    guard let snap = snapshot() else { return }
+    if swipeTracking { return }
+    if let expected = expectedFinal {
+      if CFAbsoluteTimeGetCurrent() - lastGestureTime > 1.5 {
+        expectedFinal = nil
+      } else if snap.active == expected {
+        expectedFinal = nil
+        return
+      } else {
+        return
+      }
+    }
+    if let s = snap.spaces.first(where: { $0.id == snap.active }) {
+      promote(s.id, isFull: s.isFull)
+    }
+  }
+
+  private func snapshot() -> SpaceSnapshot? {
+    let cid = CGSMainConnectionID()
+    guard cid != 0 else { return nil }
+    let active = SLSGetActiveSpace(cid)
+    guard let unmanaged = SLSCopyManagedDisplaySpaces(cid) else { return nil }
+    guard let displays = unmanaged.takeRetainedValue() as? [[String: Any]] else { return nil }
+
+    var all = Set<UInt64>()
+    var result: [SpaceInfo]?
+    for display in displays {
+      guard let spaces = display["Spaces"] as? [[String: Any]] else { continue }
+      let infos = spaces.compactMap { s -> SpaceInfo? in
+        guard let id = (s["id64"] as? NSNumber)?.uint64Value else { return nil }
+        let type = (s["type"] as? NSNumber)?.intValue ?? 0
+        return SpaceInfo(id: id, isFull: type != 0)
+      }
+      infos.forEach { all.insert($0.id) }
+      if infos.contains(where: { $0.id == active }) { result = infos }
+    }
+    knownSpaces = all
+    guard let spaces = result else { return nil }
+    return SpaceSnapshot(spaces: spaces, active: active, all: all)
+  }
+
+  private func promote(_ id: UInt64, isFull: Bool) {
+    desktopMRU.removeAll { !knownSpaces.contains($0) }
+    fullscreenMRU.removeAll { !knownSpaces.contains($0) }
+    if isFull {
+      fullscreenMRU.removeAll { $0 == id }
+      fullscreenMRU.insert(id, at: 0)
+    } else {
+      desktopMRU.removeAll { $0 == id }
+      desktopMRU.insert(id, at: 0)
+    }
+  }
+
+  private func ordered(_ mru: [UInt64], _ ids: [UInt64]) -> [UInt64] {
+    var r = mru.filter { ids.contains($0) }
+    for id in ids where !r.contains(id) { r.append(id) }
+    return r
+  }
+
+  private func beginSwipe() -> Bool {
+    guard let snap = snapshot(),
+      let current = snap.spaces.first(where: { $0.id == snap.active })
+    else { return false }
+
+    promote(current.id, isFull: current.isFull)
+    frozenDesktops = ordered(desktopMRU, snap.spaces.filter { !$0.isFull }.map(\.id))
+    frozenFullscreens = ordered(fullscreenMRU, snap.spaces.filter { $0.isFull }.map(\.id))
+    virtualFull = current.isFull
+    virtualIndex = 0
+    virtualSpace = current.id
+    startSpace = current.id
+    stepsApplied = 0
+    expectedFinal = nil
+    return true
+  }
+
+  private func endSwipe() {
+    swipeTracking = false
+    stepsApplied = 0
+    guard virtualSpace != startSpace else { return }
+    promote(virtualSpace, isFull: virtualFull)
+    expectedFinal = virtualSpace
+    lastGestureTime = CFAbsoluteTimeGetCurrent()
+  }
+
+  private func apply(progress: Double) {
+    if progress == 0 { return }
+    let n = (progress > 0 ? 1 : -1) * Int((abs(progress) / stepWidth).rounded(.up))
+    while stepsApplied < n {
+      stepsApplied += 1
+      step(right: true)
+    }
+    while stepsApplied > n {
+      stepsApplied -= 1
+      step(right: false)
+    }
+  }
+
+  private func step(right: Bool) {
+    if right {
+      if virtualFull {
+        guard virtualIndex + 1 < frozenFullscreens.count else { return }
+        virtualIndex += 1
+      } else {
+        guard !frozenFullscreens.isEmpty else { return }
+        virtualFull = true
+        virtualIndex = 0
+      }
+    } else {
+      if !virtualFull {
+        guard virtualIndex + 1 < frozenDesktops.count else { return }
+        virtualIndex += 1
+      } else {
+        guard !frozenDesktops.isEmpty else { return }
+        virtualFull = false
+        virtualIndex = 0
+      }
+    }
+    let list = virtualFull ? frozenFullscreens : frozenDesktops
+    navigate(to: list[virtualIndex])
+  }
+
+  private func navigate(to target: UInt64) {
+    guard let snap = snapshot(),
+      let from = snap.spaces.firstIndex(where: { $0.id == virtualSpace }),
+      let to = snap.spaces.firstIndex(where: { $0.id == target })
+    else { return }
+    let delta = to - from
+    guard delta != 0 else { return }
+    lastGestureTime = CFAbsoluteTimeGetCurrent()
+    virtualSpace = target
+    _ = focusRelative(right: delta > 0, count: abs(delta))
+  }
 
   func handleEvent(type: CGEventType, event: CGEvent) -> Bool {
     guard Config.shared.spaceSwitcher else { return false }
@@ -47,77 +217,40 @@ func SLSCopyManagedDisplaySpaces(_ cid: Int32) -> Unmanaged<CFArray>?
 
           switch phaseRaw {
           case 1:
-            swipeTracking = true
-            swipeFired = false
-            return true
+            swipeTracking = beginSwipe()
+            return swipeTracking
 
           case 2:
             if !swipeTracking { return false }
-            if !swipeFired {
-              let progress = event.getDoubleValueField(kCGEventGestureSwipeProgress)
-              if progress != 0.0 {
-                swipeFired = true
-                focusSpace(right: progress > 0)
-              }
-            }
+            apply(progress: event.getDoubleValueField(kCGEventGestureSwipeProgress))
             return true
 
           case 4:
             if !swipeTracking { return false }
-            if !swipeFired {
+            apply(progress: event.getDoubleValueField(kCGEventGestureSwipeProgress))
+            if stepsApplied == 0 {
               let velocity = event.getDoubleValueField(kCGEventGestureSwipeVelocityX)
-              if velocity != 0.0 {
-                swipeFired = true
-                focusSpace(right: velocity > 0)
-              }
+              if velocity != 0.0 { step(right: velocity > 0) }
             }
-            swipeTracking = false
-            swipeFired = false
+            endSwipe()
             event.setDoubleValueField(kCGEventGestureSwipeProgress, value: 0.0)
             event.setDoubleValueField(kCGEventGestureSwipeVelocityX, value: 0.0)
             event.setDoubleValueField(CGEventField(rawValue: 130)!, value: 0.0)
             return false
 
           case 8:
-            swipeTracking = false
-            swipeFired = false
+            if !swipeTracking { return false }
+            endSwipe()
             return true
 
           default:
-            return swipeTracking ? true : false
+            return swipeTracking
           }
         }
       }
     }
     if type == kCGSEventGesture && swipeTracking {
       return true
-    }
-    return false
-  }
-
-  @discardableResult
-  func focusSpace(right: Bool) -> Bool {
-    let cid = CGSMainConnectionID()
-    guard cid != 0 else { return false }
-
-    let activeSpace = SLSGetActiveSpace(cid)
-
-    guard let unmanagedDisplays = SLSCopyManagedDisplaySpaces(cid) else { return false }
-    let cfDisplays = unmanagedDisplays.takeRetainedValue()
-    guard let displays = cfDisplays as? [[String: Any]] else { return false }
-
-    for display in displays {
-      guard let spaces = display["Spaces"] as? [[String: Any]] else { continue }
-      if let currentIndex = spaces.firstIndex(where: {
-        ($0["id64"] as? UInt64) == activeSpace
-      }) {
-        let targetIndex = right ? currentIndex + 1 : currentIndex - 1
-
-        if targetIndex >= 0 && targetIndex < spaces.count {
-          lastGestureTime = CFAbsoluteTimeGetCurrent()
-          return focusRelative(right: right, count: 1)
-        }
-      }
     }
     return false
   }
