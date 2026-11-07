@@ -59,9 +59,6 @@ extension CGEventMask {
       shared.reenable()
       return returnedEvent
     }
-    if AppSwitcher.shared.handleEvent(type: type, event: event) {
-      return nil
-    }
     if InverseScrolling.shared.handleEvent(type: type, event: event) {
       return nil
     }
