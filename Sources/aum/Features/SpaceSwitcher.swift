@@ -13,14 +13,6 @@ func SLSCopyManagedDisplaySpaces(_ cid: Int32) -> Unmanaged<CFArray>?
 @MainActor final class SpaceSwitcher {
   static let shared = SpaceSwitcher()
 
-  private static var isNaturalScrollingEnabled: Bool {
-    let key = "com.apple.swipescrolldirection" as CFString
-    let domain = kCFPreferencesAnyApplication
-    var valid: DarwinBoolean = false
-    let value = CFPreferencesGetAppBooleanValue(key, domain, &valid)
-    return valid.boolValue ? value : true
-  }
-
   var syntheticEventsToPassThrough: Int = 0
   var lastGestureTime: CFAbsoluteTime = 0
   var swipeTracking = false
@@ -143,9 +135,7 @@ func SLSCopyManagedDisplaySpaces(_ cid: Int32) -> Unmanaged<CFArray>?
   }
 
   func postSwipe(phase: CGSGesturePhase, right: Bool) -> Bool {
-    let isNatural = Self.isNaturalScrollingEnabled
-    let baseSign: Double = right ? -1.0 : 1.0
-    let sign: Double = isNatural ? baseSign : -baseSign
+    let sign: Double = right ? -1.0 : 1.0
 
     guard let ev = CGEvent(source: nil) else { return false }
 
