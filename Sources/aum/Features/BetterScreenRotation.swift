@@ -7,7 +7,7 @@ private func SLSSetDisplayRotation(_ display: CGDirectDisplayID, _ rotation: Int
 @MainActor final class BetterScreenRotation {
   static let shared = BetterScreenRotation()
 
-  private static let bindings: [Int64: Int32] = [34: 270, 31: 0, 35: 90]
+  private static let bindings: [Int64: Int32] = [34: 270, 31: 0, 35: 90, 37: 180]
   private static let modifiers: CGEventFlags = [
     .maskAlternate, .maskCommand, .maskControl, .maskShift,
   ]
@@ -29,7 +29,7 @@ private func SLSSetDisplayRotation(_ display: CGDirectDisplayID, _ rotation: Int
     self.currentRotation = rotation
     self.screenSize = bounds.size
     if rotationChanged {
-      CGAssociateMouseAndMouseCursorPosition(rotation == 0 ? 1 : 0)
+      CGAssociateMouseAndMouseCursorPosition((rotation == 0 || rotation == 180) ? 1 : 0)
       lastNormalizedPosition = nil
       cursorPosition = nil
     }
@@ -101,7 +101,7 @@ private func SLSSetDisplayRotation(_ display: CGDirectDisplayID, _ rotation: Int
 
   func handleTouch(touches: UnsafePointer<MTTouch>?, nFingers: Int32) {
     guard Config.shared.betterScreenRotation else { return }
-    guard currentRotation != 0 else { return }
+    guard currentRotation != 0 && currentRotation != 180 else { return }
     guard nFingers == 1, let touch = touches?.pointee else {
       lastNormalizedPosition = nil
       cursorPosition = nil

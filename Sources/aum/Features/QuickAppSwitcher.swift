@@ -11,7 +11,7 @@ func SLSCopySpacesForWindows(_ cid: Int32, _ mask: Int32, _ wids: CFArray) -> Un
 
   private var current: NSRunningApplication?
   private var previous: NSRunningApplication?
-  private var altDown = false
+  private var cmdDown = false
   private var dirty = false
   private var downTime: TimeInterval = 0
 
@@ -31,19 +31,21 @@ func SLSCopySpacesForWindows(_ cid: Int32, _ mask: Int32, _ wids: CFArray) -> Un
 
     case .flagsChanged:
       let flags = event.flags
-      let others = flags.intersection([.maskShift, .maskCommand, .maskControl])
+      let others = flags.intersection([.maskShift, .maskAlternate, .maskControl])
+      let rightCmd = flags.rawValue & 0x10 != 0
+      let leftCmd = flags.rawValue & 0x08 != 0
       let now = ProcessInfo.processInfo.systemUptime
 
-      if flags.contains(.maskAlternate) {
-        if !altDown {
-          altDown = true
-          dirty = !others.isEmpty
+      if rightCmd {
+        if !cmdDown {
+          cmdDown = true
+          dirty = !others.isEmpty || leftCmd
           downTime = now
-        } else if !others.isEmpty {
+        } else if !others.isEmpty || leftCmd {
           dirty = true
         }
-      } else if altDown {
-        altDown = false
+      } else if cmdDown {
+        cmdDown = false
         if !dirty, now - downTime < Self.tapMaxDuration, let app = previous, !app.isTerminated {
           Self.fastActivate(app)
         }

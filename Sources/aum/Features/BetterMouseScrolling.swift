@@ -4,7 +4,7 @@ import Foundation
 @MainActor final class BetterMouseScrolling {
   static let shared = BetterMouseScrolling()
 
-  private static let linesPerTick: Int64 = 3
+  private static let linesPerTick: Int64 = 4
   private static let pixelsPerLine: Int64 = 10
 
   private static let axes: [(CGEventField, CGEventField, CGEventField)] = [
