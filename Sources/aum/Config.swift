@@ -1,11 +1,11 @@
 @MainActor final class Config: ConfigCore {
-    @UserDefault var betterLayoutSwitcher = true
-    @UserDefault var betterMouseScrolling = true
-    @UserDefault var betterRightClick = true
-    @UserDefault var betterScreenRotation = true
-    @UserDefault var fastNavGesture = true
-    @UserDefault var instantSpaceSwitcher = true
-    @UserDefault var middleClickEmu = true
+    @UserDefault var layoutSwitcher = true
+    @UserDefault var inverseScrolling = true
+    @UserDefault var touchRightClick = true
+    @UserDefault var betterDisplayRotation = true
+    @UserDefault var touchNavigation = true
+    @UserDefault var spaceSwitcher = true
+    @UserDefault var touchMiddleClick = true
     @UserDefault var tapToClick = SystemPermissions.getIsSystemTapToClickEnabled
-    @UserDefault var quickAppSwitcher = true
+    @UserDefault var appSwitcher = true
 }

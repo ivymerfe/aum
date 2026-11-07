@@ -2,8 +2,8 @@ import AppKit
 import CoreGraphics
 import Foundation
 
-@MainActor final class FastNavGesture {
-  static let shared = FastNavGesture()
+@MainActor final class TouchNavigation {
+  static let shared = TouchNavigation()
 
   private static let kLeftBracketKeyCode: UInt16 = 33
   private static let kRightBracketKeyCode: UInt16 = 30
@@ -16,7 +16,7 @@ import Foundation
   var startY: CGFloat = 0
 
   func handleEvent(type: CGEventType, event: CGEvent) -> Bool {
-    guard Config.shared.fastNavGesture else { return false }
+    guard Config.shared.touchNavigation else { return false }
     guard type == kCGSEventGesture else { return false }
     guard event.getIntegerValueField(kCGEventGestureHIDType) == 0 else { return false }
     guard let ns = NSEvent(cgEvent: event) else { return false }

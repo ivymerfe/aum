@@ -13,25 +13,18 @@ import os
   private var accessibilityPermissionStatusItem: NSMenuItem!
   private var accessibilityPermissionActionItem: NSMenuItem!
 
-  private var betterLayoutSwitcherItem: NSMenuItem!
-  private var betterMouseScrollingItem: NSMenuItem!
-  private var betterRightClickItem: NSMenuItem!
-  private var betterScreenRotationItem: NSMenuItem!
-  private var fastNavGestureItem: NSMenuItem!
-  private var instantSpaceSwitcherItem: NSMenuItem!
-
-  private var middleClickEmuItem: NSMenuItem!
-  private var tapToClickItem: NSMenuItem!
-
-  private var quickAppSwitcherItem: NSMenuItem!
-
   private var launchAtLoginItem: NSMenuItem!
-  private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+  let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
-  var isStatusItemVisible: Bool {
-    get { statusItem.isVisible }
-    set { statusItem.isVisible = newValue }
-  }
+  private var appSwitcherItem: NSMenuItem!
+  private var betterDisplayRotationItem: NSMenuItem!
+  private var inverseScrollingItem: NSMenuItem!
+  private var layoutSwitcherItem: NSMenuItem!
+  private var spaceSwitcherItem: NSMenuItem!
+  private var touchMiddleClickItem: NSMenuItem!
+  private var tapToClickItem: NSMenuItem!
+  private var touchNavigationItem: NSMenuItem!
+  private var touchRightClickItem: NSMenuItem!
 
   private static let shouldDelayInit = terminateExistingInstance(force: false)
   private var timesHandledReopen = 0
@@ -66,63 +59,13 @@ import os
     createMenuAccessibilityPermissionItems(menu)
     menu.addSeparator()
 
-    betterLayoutSwitcherItem = menu.addItem(
-      withTitle: "BetterLayoutSwitcher",
-      action: #selector(toggleBetterLayoutSwitcher),
-      target: self
-    )
-    betterMouseScrollingItem = menu.addItem(
-      withTitle: "BetterMouseScrolling",
-      action: #selector(toggleBetterMouseScrolling),
-      target: self
-    )
-    betterRightClickItem = menu.addItem(
-      withTitle: "BetterRightClick",
-      action: #selector(toggleBetterRightClick),
-      target: self
-    )
-    betterScreenRotationItem = menu.addItem(
-      withTitle: "BetterScreenRotation",
-      action: #selector(toggleBetterScreenRotation),
-      target: self
-    )
-    fastNavGestureItem = menu.addItem(
-      withTitle: "FastNavGesture",
-      action: #selector(toggleFastNavGesture),
-      target: self
-    )
-    instantSpaceSwitcherItem = menu.addItem(
-      withTitle: "InstantSpaceSwitcher",
-      action: #selector(toggleInstantSpaceSwitcher),
-      target: self
-    )
-
-    menu.addSeparator()
-
-    middleClickEmuItem = menu.addItem(
-      withTitle: "MiddleClickEmu",
-      action: #selector(toggleMiddleClickEmu),
-      target: self
-    )
-
-    tapToClickItem = menu.addItem(
-      withTitle: "Tap to click", action: #selector(toggleTapToClick), target: self)
-
-    menu.addSeparator()
-
-    quickAppSwitcherItem = menu.addItem(
-      withTitle: "QuickAppSwitcher",
-      action: #selector(toggleQuickAppSwitcher),
-      target: self
-    )
-
-    menu.addSeparator()
-
     launchAtLoginItem = menu.addItem(
       withTitle: "Launch at login",
       action: #selector(toggleLoginItem),
       target: self
     )
+    updateLaunchAtLoginItem()
+
     _ = menu.addItem(
       withTitle: "Restart listeners",
       action: #selector(restartNow),
@@ -130,106 +73,104 @@ import os
       keyEquivalent: "r"
     )
     menu.addSeparator()
+
     _ = menu.addItem(
       withTitle: "Quit", action: #selector(actionQuit), target: self, keyEquivalent: "q")
 
-    updateBetterLayoutSwitcherItem()
-    updateBetterMouseScrollingItem()
-    updateBetterRightClickItem()
-    updateBetterScreenRotationItem()
-    updateFastNavGestureItem()
-    updateInstantSpaceSwitcherItem()
+    menu.addSeparator()
 
-    updateMiddleClickEmuItem()
-    updateTapToClickItem()
+    appSwitcherItem = menu.addItem(
+      withTitle: "AppSwitcher",
+      action: #selector(toggleAppSwitcher),
+      target: self
+    )
+    betterDisplayRotationItem = menu.addItem(
+      withTitle: "BetterDisplayRotation",
+      action: #selector(toggleBetterDisplayRotation),
+      target: self
+    )
+    inverseScrollingItem = menu.addItem(
+      withTitle: "InverseScrolling",
+      action: #selector(toggleInverseScrolling),
+      target: self
+    )
+    layoutSwitcherItem = menu.addItem(
+      withTitle: "LayoutSwitcher",
+      action: #selector(toggleLayoutSwitcher),
+      target: self
+    )
+    spaceSwitcherItem = menu.addItem(
+      withTitle: "SpaceSwitcher",
+      action: #selector(toggleSpaceSwitcher),
+      target: self
+    )
+    touchMiddleClickItem = menu.addItem(
+      withTitle: "TouchMiddleClick",
+      action: #selector(toggleTouchMiddleClick),
+      target: self
+    )
+    tapToClickItem = menu.addItem(
+      withTitle: "Tap to click", action: #selector(toggleTapToClick), target: self)
 
-    updateQuickAppSwitcherItem()
+    touchNavigationItem = menu.addItem(
+      withTitle: "TouchNavigation",
+      action: #selector(toggleTouchNavigation),
+      target: self
+    )
+    touchRightClickItem = menu.addItem(
+      withTitle: "TouchRightClick",
+      action: #selector(toggleTouchRightClick),
+      target: self
+    )
 
-    updateLaunchAtLoginItem()
+    appSwitcherItem.state = config.appSwitcher ? .on : .off
+    betterDisplayRotationItem.state = config.betterDisplayRotation ? .on : .off
+    inverseScrollingItem.state = config.inverseScrolling ? .on : .off
+    layoutSwitcherItem.state = config.layoutSwitcher ? .on : .off
+    spaceSwitcherItem.state = config.spaceSwitcher ? .on : .off
+    touchMiddleClickItem.state = config.touchMiddleClick ? .on : .off
+    tapToClickItem.state = config.tapToClick ? .on : .off
+    touchNavigationItem.state = config.touchNavigation ? .on : .off
+    touchRightClickItem.state = config.touchRightClick ? .on : .off
+
     return menu
   }
 
-  private func updateBetterLayoutSwitcherItem() {
-    betterLayoutSwitcherItem.state = config.betterLayoutSwitcher ? .on : .off
-    BetterLayoutSwitcher.shared.reload()
+  @objc private func toggleAppSwitcher(sender: NSButton) {
+    config.appSwitcher = sender.state == .off
   }
 
-  private func updateBetterMouseScrollingItem() {
-    betterMouseScrollingItem.state = config.betterMouseScrolling ? .on : .off
+  @objc private func toggleBetterDisplayRotation(sender: NSButton) {
+    config.betterDisplayRotation = (betterDisplayRotationItem.state == .off)
   }
 
-  private func updateBetterRightClickItem() {
-    betterRightClickItem.state = config.betterRightClick ? .on : .off
+  @objc private func toggleInverseScrolling(sender: NSButton) {
+    config.inverseScrolling = (inverseScrollingItem.state == .off)
   }
 
-  private func updateBetterScreenRotationItem() {
-    betterScreenRotationItem.state = config.betterScreenRotation ? .on : .off
+  @objc private func toggleLayoutSwitcher(sender: NSButton) {
+    config.layoutSwitcher = (layoutSwitcherItem.state == .off)
+    LayoutSwitcher.shared.reload()
   }
 
-  private func updateFastNavGestureItem() {
-    fastNavGestureItem.state = config.fastNavGesture ? .on : .off
+  @objc private func toggleSpaceSwitcher(sender: NSButton) {
+    config.spaceSwitcher = (spaceSwitcherItem.state == .off)
   }
 
-  private func updateInstantSpaceSwitcherItem() {
-    instantSpaceSwitcherItem.state = config.instantSpaceSwitcher ? .on : .off
-  }
-
-  private func updateMiddleClickEmuItem() {
-    middleClickEmuItem.state = config.middleClickEmu ? .on : .off
-    tapToClickItem.isEnabled = config.middleClickEmu
-  }
-
-  private func updateTapToClickItem() {
-    tapToClickItem.state = config.tapToClick ? .on : .off
-  }
-
-  private func updateQuickAppSwitcherItem() {
-    quickAppSwitcherItem.state = config.quickAppSwitcher ? .on : .off
-  }
-
-  @objc private func toggleBetterLayoutSwitcher(sender: NSButton) {
-    config.betterLayoutSwitcher = (betterLayoutSwitcherItem.state == .off)
-    updateBetterLayoutSwitcherItem()
-  }
-
-  @objc private func toggleBetterMouseScrolling(sender: NSButton) {
-    config.betterMouseScrolling = (betterMouseScrollingItem.state == .off)
-    updateBetterMouseScrollingItem()
-  }
-
-  @objc private func toggleBetterRightClick(sender: NSButton) {
-    config.betterRightClick = (betterRightClickItem.state == .off)
-    updateBetterRightClickItem()
-  }
-
-  @objc private func toggleBetterScreenRotation(sender: NSButton) {
-    config.betterScreenRotation = (betterScreenRotationItem.state == .off)
-    updateBetterScreenRotationItem()
-  }
-
-  @objc private func toggleFastNavGesture(sender: NSButton) {
-    config.fastNavGesture = (fastNavGestureItem.state == .off)
-    updateFastNavGestureItem()
-  }
-
-  @objc private func toggleInstantSpaceSwitcher(sender: NSButton) {
-    config.instantSpaceSwitcher = (instantSpaceSwitcherItem.state == .off)
-    updateInstantSpaceSwitcherItem()
-  }
-
-  @objc private func toggleMiddleClickEmu(sender: NSButton) {
-    config.middleClickEmu = (middleClickEmuItem.state == .off)
-    updateMiddleClickEmuItem()
+  @objc private func toggleTouchMiddleClick(sender: NSButton) {
+    config.touchMiddleClick = (touchMiddleClickItem.state == .off)
   }
 
   @objc private func toggleTapToClick(sender: NSButton) {
     config.tapToClick = sender.state == .off
-    updateTapToClickItem()
   }
 
-  @objc private func toggleQuickAppSwitcher(sender: NSButton) {
-    config.quickAppSwitcher = sender.state == .off
-    updateQuickAppSwitcherItem()
+  @objc private func toggleTouchNavigation(sender: NSButton) {
+    config.touchNavigation = (touchNavigationItem.state == .off)
+  }
+
+  @objc private func toggleTouchRightClick(sender: NSButton) {
+    config.touchRightClick = (touchRightClickItem.state == .off)
   }
 
   @objc private func openAccessibilitySettings() {

@@ -55,32 +55,32 @@ extension CGEventMask {
 
     let returnedEvent = Unmanaged.passUnretained(event)
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-      InstantSpaceSwitcher.shared.syntheticEventsToPassThrough = 0
+      SpaceSwitcher.shared.syntheticEventsToPassThrough = 0
       shared.reenable()
       return returnedEvent
     }
-    if BetterLayoutSwitcher.shared.handleEvent(type: type, event: event) {
+    if AppSwitcher.shared.handleEvent(type: type, event: event) {
       return nil
     }
-    if BetterMouseScrolling.shared.handleEvent(type: type, event: event) {
+    if InverseScrolling.shared.handleEvent(type: type, event: event) {
       return nil
     }
-    if BetterRightClick.shared.handleEvent(type: type, event: event) {
+    if LayoutSwitcher.shared.handleEvent(type: type, event: event) {
       return nil
     }
-    if FastNavGesture.shared.handleEvent(type: type, event: event) {
+    if SpaceSwitcher.shared.handleEvent(type: type, event: event) {
       return nil
     }
-    if InstantSpaceSwitcher.shared.handleEvent(type: type, event: event) {
+    if TouchMiddleClick.shared.handleEvent(type: type, event: event) {
       return nil
     }
-    if MiddleClickEmu.shared.handleEvent(type: type, event: event) {
+    if TouchNavigation.shared.handleEvent(type: type, event: event) {
       return nil
     }
-    if BetterScreenRotation.shared.handleEvent(type: type, event: event) {
+    if TouchRightClick.shared.handleEvent(type: type, event: event) {
       return nil
     }
-    if QuickAppSwitcher.shared.handleEvent(type: type, event: event) {
+    if BetterDisplayRotation.shared.handleEvent(type: type, event: event) {
       return nil
     }
     return returnedEvent

@@ -10,8 +10,8 @@ func SLSGetActiveSpace(_ cid: Int32) -> UInt64
 @_silgen_name("SLSCopyManagedDisplaySpaces")
 func SLSCopyManagedDisplaySpaces(_ cid: Int32) -> Unmanaged<CFArray>?
 
-@MainActor final class InstantSpaceSwitcher {
-  static let shared = InstantSpaceSwitcher()
+@MainActor final class SpaceSwitcher {
+  static let shared = SpaceSwitcher()
 
   private static var isNaturalScrollingEnabled: Bool {
     let key = "com.apple.swipescrolldirection" as CFString
@@ -27,7 +27,7 @@ func SLSCopyManagedDisplaySpaces(_ cid: Int32) -> Unmanaged<CFArray>?
   var swipeFired = false
 
   func handleEvent(type: CGEventType, event: CGEvent) -> Bool {
-    guard Config.shared.instantSpaceSwitcher else { return false }
+    guard Config.shared.spaceSwitcher else { return false }
 
     if syntheticEventsToPassThrough > 0
       && CFAbsoluteTimeGetCurrent() - lastGestureTime >= 1.0

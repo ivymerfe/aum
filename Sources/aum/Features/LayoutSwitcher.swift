@@ -8,13 +8,13 @@ private func IOHIDEventSystemClientSetProperty(
   _ client: UnsafeMutableRawPointer, _ key: CFString, _ value: CFTypeRef
 ) -> Bool
 
-@MainActor final class BetterLayoutSwitcher {
-  static let shared = BetterLayoutSwitcher()
+@MainActor final class LayoutSwitcher {
+  static let shared = LayoutSwitcher()
 
   private static let kF18KeyCode: Int64 = 79
 
   func reload() {
-    if Config.shared.betterLayoutSwitcher {
+    if Config.shared.layoutSwitcher {
       Self.setKeyMapping([
         [
           "HIDKeyboardModifierMappingSrc": 0x7_0000_0039,
@@ -27,7 +27,7 @@ private func IOHIDEventSystemClientSetProperty(
   }
   
   func handleEvent(type: CGEventType, event: CGEvent) -> Bool {
-    guard Config.shared.betterLayoutSwitcher else { return false }
+    guard Config.shared.layoutSwitcher else { return false }
     guard event.getIntegerValueField(.keyboardEventKeycode) == Self.kF18KeyCode else { return false }
   
     if type == .keyDown {

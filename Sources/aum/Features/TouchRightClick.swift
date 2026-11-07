@@ -1,14 +1,14 @@
 import CoreGraphics
 import MultitouchSupport
 
-@MainActor final class BetterRightClick {
-  static let shared = BetterRightClick()
+@MainActor final class TouchRightClick {
+  static let shared = TouchRightClick()
 
   var shouldRightClick: Bool = false
   var wasRightClick: Bool = false
 
   func handleEvent(type: CGEventType, event: CGEvent) -> Bool {
-    guard Config.shared.betterRightClick else { return false }
+    guard Config.shared.touchRightClick else { return false }
     if shouldRightClick && type == .leftMouseDown {
       wasRightClick = true
       shouldRightClick = false

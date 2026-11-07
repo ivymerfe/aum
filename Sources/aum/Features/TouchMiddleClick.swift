@@ -2,8 +2,8 @@ import CoreGraphics
 import Foundation
 import MultitouchSupport
 
-@MainActor final class MiddleClickEmu {
-  static let shared = MiddleClickEmu()
+@MainActor final class TouchMiddleClick {
+  static let shared = TouchMiddleClick()
 
   private static var fingersCount: Int = 3
   private static let maxDistanceDelta: Float = 0.05
@@ -20,7 +20,7 @@ import MultitouchSupport
   private var middleClickPos2: SIMD2<Float> = .zero
 
   func handleEvent(type: CGEventType, event: CGEvent) -> Bool {
-    guard Config.shared.middleClickEmu else { return false }
+    guard Config.shared.touchMiddleClick else { return false }
     if threeDown && (type == .leftMouseDown || type == .rightMouseDown) {
       wasThreeDown = true
       threeDown = false
@@ -37,7 +37,7 @@ import MultitouchSupport
   }
 
   func handleTouch(touches: UnsafePointer<MTTouch>?, nFingers: Int32) {
-    guard Config.shared.middleClickEmu else { return }
+    guard Config.shared.touchMiddleClick else { return }
     threeDown = nFingers == Self.fingersCount
 
     guard Config.shared.tapToClick else { return }

@@ -1,8 +1,8 @@
 import CoreGraphics
 import Foundation
 
-@MainActor final class BetterMouseScrolling {
-  static let shared = BetterMouseScrolling()
+@MainActor final class InverseScrolling {
+  static let shared = InverseScrolling()
 
   private static let linesPerTick: Int64 = 4
   private static let pixelsPerLine: Int64 = 10
@@ -19,7 +19,7 @@ import Foundation
   ]
 
   func handleEvent(type: CGEventType, event: CGEvent) -> Bool {
-    guard Config.shared.betterMouseScrolling else { return false }
+    guard Config.shared.inverseScrolling else { return false }
     guard type == .scrollWheel else { return false }
     guard event.getIntegerValueField(.scrollWheelEventIsContinuous) == 0 else { return false }
     guard event.getIntegerValueField(.scrollWheelEventScrollPhase) == 0,

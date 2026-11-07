@@ -29,9 +29,9 @@ let restartLog = Logger(
   private let touchCallback: MTFrameCallbackFunction = {
     _, touches, nFingers, _, _ in
 
-    BetterScreenRotation.shared.handleTouch(touches: touches, nFingers: nFingers)
-    BetterRightClick.shared.handleTouch(touches: touches, nFingers: nFingers)
-    MiddleClickEmu.shared.handleTouch(touches: touches, nFingers: nFingers)
+    BetterDisplayRotation.shared.handleTouch(touches: touches, nFingers: nFingers)
+    TouchRightClick.shared.handleTouch(touches: touches, nFingers: nFingers)
+    TouchMiddleClick.shared.handleTouch(touches: touches, nFingers: nFingers)
     return
   }
 
@@ -54,7 +54,7 @@ let restartLog = Logger(
 
     registerTouchCallback()
     if let front = NSWorkspace.shared.frontmostApplication {
-      QuickAppSwitcher.shared.appActivated(front)
+      AppSwitcher.shared.appActivated(front)
     }
     observeSystemNotifications()
     multitouchManager.setupMultitouchListener()
@@ -65,9 +65,9 @@ let restartLog = Logger(
     accessibilityMonitor.addListener { becameTrusted in
       if becameTrusted {
         _ = CGEventListener.shared.start()
-        BetterLayoutSwitcher.shared.reload()
+        LayoutSwitcher.shared.reload()
       } else {
-        trayMenu.isStatusItemVisible = true
+        trayMenu.statusItem.isVisible = true
         CGEventListener.shared.stop()
       }
     }
@@ -147,7 +147,7 @@ let restartLog = Logger(
       guard
         let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
       else { return }
-      Task { @MainActor in QuickAppSwitcher.shared.appActivated(app) }
+      Task { @MainActor in AppSwitcher.shared.appActivated(app) }
     }
   }
 
@@ -178,7 +178,7 @@ let restartLog = Logger(
     let bounds = CGDisplayBounds(mainDisplay)
 
     Task { @MainActor in
-      BetterScreenRotation.shared.updateDisplayConfig(rotation: rotation, bounds: bounds)
+      BetterDisplayRotation.shared.updateDisplayConfig(rotation: rotation, bounds: bounds)
     }
     if !flags.isDisjoint(with: [.setModeFlag, .addFlag, .removeFlag, .disabledFlag]) {
       AumApp.from(pointer: userData).scheduleRestart(2, reason: "Display reconfigured")

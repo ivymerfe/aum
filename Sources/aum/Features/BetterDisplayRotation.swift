@@ -4,8 +4,8 @@ import MultitouchSupport
 @_silgen_name("SLSSetDisplayRotation")
 private func SLSSetDisplayRotation(_ display: CGDirectDisplayID, _ rotation: Int32) -> Int32
 
-@MainActor final class BetterScreenRotation {
-  static let shared = BetterScreenRotation()
+@MainActor final class BetterDisplayRotation {
+  static let shared = BetterDisplayRotation()
 
   private static let bindings: [Int64: Int32] = [34: 270, 31: 0, 35: 90, 37: 180]
   private static let modifiers: CGEventFlags = [
@@ -36,7 +36,7 @@ private func SLSSetDisplayRotation(_ display: CGDirectDisplayID, _ rotation: Int
   }
 
   func handleEvent(type: CGEventType, event: CGEvent) -> Bool {
-    guard Config.shared.betterScreenRotation else { return false }
+    guard Config.shared.betterDisplayRotation else { return false }
 
     if type == .keyDown {
       let keycode = event.getIntegerValueField(.keyboardEventKeycode)
@@ -100,7 +100,7 @@ private func SLSSetDisplayRotation(_ display: CGDirectDisplayID, _ rotation: Int
   }
 
   func handleTouch(touches: UnsafePointer<MTTouch>?, nFingers: Int32) {
-    guard Config.shared.betterScreenRotation else { return }
+    guard Config.shared.betterDisplayRotation else { return }
     guard currentRotation != 0 && currentRotation != 180 else { return }
     guard nFingers == 1, let touch = touches?.pointee else {
       lastNormalizedPosition = nil

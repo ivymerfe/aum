@@ -4,8 +4,8 @@ import CoreGraphics
 @_silgen_name("SLSCopySpacesForWindows")
 func SLSCopySpacesForWindows(_ cid: Int32, _ mask: Int32, _ wids: CFArray) -> Unmanaged<CFArray>?
 
-@MainActor final class QuickAppSwitcher {
-  static let shared = QuickAppSwitcher()
+@MainActor final class AppSwitcher {
+  static let shared = AppSwitcher()
 
   private static let tapMaxDuration: TimeInterval = 0.25
 
@@ -23,7 +23,7 @@ func SLSCopySpacesForWindows(_ cid: Int32, _ mask: Int32, _ wids: CFArray) -> Un
   }
 
   func handleEvent(type: CGEventType, event: CGEvent) -> Bool {
-    guard Config.shared.quickAppSwitcher else { return false }
+    guard Config.shared.appSwitcher else { return false }
 
     switch type {
     case .keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown:
@@ -60,9 +60,9 @@ func SLSCopySpacesForWindows(_ cid: Int32, _ mask: Int32, _ wids: CFArray) -> Un
   static func fastActivate(_ app: NSRunningApplication) {
     let delta = spaceDelta(for: app)
     if delta < 0 {
-      _ = InstantSpaceSwitcher.shared.focusRelative(right: false, count: -delta)
+      _ = SpaceSwitcher.shared.focusRelative(right: false, count: -delta)
     } else if delta > 0 {
-      _ = InstantSpaceSwitcher.shared.focusRelative(right: true, count: delta)
+      _ = SpaceSwitcher.shared.focusRelative(right: true, count: delta)
     }
     app.activate()
   }
