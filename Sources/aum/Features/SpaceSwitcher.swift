@@ -26,6 +26,8 @@ struct SpaceSnapshot {
   static let shared = SpaceSwitcher()
 
   private static let tabKey: Int64 = 48
+  private static let backtickKey: Int64 = 50
+
   private static let repeatInterval: TimeInterval = 0.25
   private static let slotKeys: [Int64: (full: Bool, index: Int)] = [
     12: (false, 0), 13: (false, 1), 14: (false, 2), 2: (false, 3),
@@ -47,9 +49,11 @@ struct SpaceSnapshot {
   private var expectedFinal: UInt64?
   private var desktopMRU: [UInt64] = []
   private var fullscreenMRU: [UInt64] = []
-  private var allMRU: [UInt64] = []
   private var knownSpaces: Set<UInt64> = []
 
+  private var tabFull = false
+  private var tabCode: Int64 = 0
+  private var tabStart: UInt64 = 0
   private var tabSession = false
   private var tabHeld = false
   private var tabForward = true
@@ -121,9 +125,6 @@ struct SpaceSnapshot {
   private func promote(_ id: UInt64, isFull: Bool) {
     desktopMRU.removeAll { !knownSpaces.contains($0) }
     fullscreenMRU.removeAll { !knownSpaces.contains($0) }
-    allMRU.removeAll { !knownSpaces.contains($0) }
-    allMRU.removeAll { $0 == id }
-    allMRU.insert(id, at: 0)
     if isFull {
       fullscreenMRU.removeAll { $0 == id }
       fullscreenMRU.insert(id, at: 0)
@@ -220,15 +221,19 @@ struct SpaceSnapshot {
     _ = focusRelative(right: delta > 0, count: abs(delta))
   }
 
-  private func beginTab() -> Bool {
+  private func beginTab(full: Bool, code: Int64) -> Bool {
     guard let snap = snapshot() else { return false }
     let activeId = currentSpace(snap)
     guard let current = snap.spaces.first(where: { $0.id == activeId }) else { return false }
 
     promote(current.id, isFull: current.isFull)
     let byId = Dictionary(snap.spaces.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-    frozenAll = ordered(allMRU, snap.spaces.map(\.id)).compactMap { byId[$0] }
-    tabIndex = 0
+    let ids = snap.spaces.filter { $0.isFull == full }.map(\.id)
+    frozenAll = ordered(full ? fullscreenMRU : desktopMRU, ids).compactMap { byId[$0] }
+    tabIndex = current.isFull == full ? 0 : -1
+    tabFull = full
+    tabCode = code
+    tabStart = current.id
     virtualSpace = current.id
     expectedFinal = nil
     tabSession = true
@@ -236,9 +241,13 @@ struct SpaceSnapshot {
   }
 
   private func tabStep() {
-    guard frozenAll.count > 1 else { return }
     let n = frozenAll.count
-    tabIndex = (tabIndex + (tabForward ? 1 : n - 1)) % n
+    guard n > (tabIndex < 0 ? 0 : 1) else { return }
+    if tabIndex < 0 {
+      tabIndex = tabForward ? 0 : n - 1
+    } else {
+      tabIndex = (tabIndex + (tabForward ? 1 : n - 1)) % n
+    }
     navigate(to: frozenAll[tabIndex].id)
   }
 
@@ -260,7 +269,7 @@ struct SpaceSnapshot {
     tabHeld = false
     guard tabSession else { return }
     tabSession = false
-    if tabIndex != 0, frozenAll.indices.contains(tabIndex) {
+    if virtualSpace != tabStart, frozenAll.indices.contains(tabIndex) {
       commit(frozenAll[tabIndex])
     }
     frozenAll = []
@@ -285,34 +294,26 @@ struct SpaceSnapshot {
 
     switch type {
     case .keyDown:
-      if code == Self.tabKey,
+      if code == Self.tabKey || code == Self.backtickKey,
         flags.contains(.maskCommand),
         flags.intersection([.maskControl, .maskAlternate]).isEmpty
       {
         swallowed.insert(code)
         if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 { return true }
-        if !tabSession && !beginTab() { return true }
+        let full = code == Self.backtickKey
+        if tabSession && (tabFull != full) { endTab() }
+        if !tabSession && !beginTab(full: full, code: code) { return true }
         tabHeld = true
         tabForward = !flags.contains(.maskShift)
         tabStep()
         armRepeat()
         return true
       }
-      if flags.contains(.maskAlternate),
-        flags.intersection([.maskCommand, .maskControl, .maskShift]).isEmpty,
-        let slot = Self.slotKeys[code]
-      {
-        swallowed.insert(code)
-        if event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
-          jump(full: slot.full, index: slot.index)
-        }
-        return true
-      }
       return false
 
     case .keyUp:
       guard swallowed.remove(code) != nil else { return false }
-      if code == Self.tabKey { endTab() }
+      if tabSession && code == tabCode { endTab() }
       return true
 
     case .flagsChanged:
