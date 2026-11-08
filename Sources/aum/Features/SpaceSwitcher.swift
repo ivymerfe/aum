@@ -25,14 +25,10 @@ struct SpaceSnapshot {
 @MainActor final class SpaceSwitcher {
   static let shared = SpaceSwitcher()
 
-  private static let tabKey: Int64 = 48
-  private static let backtickKey: Int64 = 50
-
   private static let repeatInterval: TimeInterval = 0.25
-  private static let slotKeys: [Int64: (full: Bool, index: Int)] = [
-    12: (false, 0), 13: (false, 1), 14: (false, 2), 2: (false, 3),
-    18: (true, 0), 19: (true, 1), 20: (true, 2), 21: (true, 3),
-  ]
+  private static let desktopKey: Int64 = 13
+  private static let fullscreenKey: Int64 = 14
+  private static let digitKeys: [Int64: Int] = [18: 0, 19: 1, 20: 2, 21: 3]
 
   var syntheticEventsToPassThrough: Int = 0
   var lastGestureTime: CFAbsoluteTime = 0
@@ -276,12 +272,13 @@ struct SpaceSnapshot {
     tabIndex = 0
   }
 
-  private func jump(full: Bool, index: Int) {
+  private func jump(index: Int) {
     guard let snap = snapshot() else { return }
-    let list = snap.spaces.filter { $0.isFull == full }
+    let current = currentSpace(snap)
+    guard let info = snap.spaces.first(where: { $0.id == current }) else { return }
+    let list = snap.spaces.filter { $0.isFull == info.isFull }
     guard list.indices.contains(index) else { return }
     let target = list[index]
-    let current = currentSpace(snap)
     guard target.id != current else { return }
     virtualSpace = current
     navigate(to: target.id)
@@ -294,13 +291,13 @@ struct SpaceSnapshot {
 
     switch type {
     case .keyDown:
-      if code == Self.tabKey || code == Self.backtickKey,
-        flags.contains(.maskCommand),
-        flags.intersection([.maskControl, .maskAlternate]).isEmpty
-      {
+      guard flags.contains(.maskAlternate),
+        flags.intersection([.maskCommand, .maskControl]).isEmpty
+      else { return false }
+      if code == Self.desktopKey || code == Self.fullscreenKey {
         swallowed.insert(code)
         if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 { return true }
-        let full = code == Self.backtickKey
+        let full = code == Self.fullscreenKey
         if tabSession && (tabFull != full) { endTab() }
         if !tabSession && !beginTab(full: full, code: code) { return true }
         tabHeld = true
@@ -309,14 +306,9 @@ struct SpaceSnapshot {
         armRepeat()
         return true
       }
-      if flags.contains(.maskAlternate),
-        flags.intersection([.maskCommand, .maskControl, .maskShift]).isEmpty,
-        let slot = Self.slotKeys[code]
-      {
+      if !flags.contains(.maskShift), let index = Self.digitKeys[code] {
         swallowed.insert(code)
-        if event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
-          jump(full: slot.full, index: slot.index)
-        }
+        if event.getIntegerValueField(.keyboardEventAutorepeat) == 0 { jump(index: index) }
         return true
       }
       return false
@@ -328,7 +320,7 @@ struct SpaceSnapshot {
 
     case .flagsChanged:
       if tabSession {
-        if flags.contains(.maskCommand) {
+        if flags.contains(.maskAlternate) {
           tabForward = !flags.contains(.maskShift)
         } else {
           endTab()

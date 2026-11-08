@@ -54,6 +54,9 @@ let restartLog = Logger(
 
     registerTouchCallback()
     SpaceSwitcher.shared.startTracking()
+    if let front = NSWorkspace.shared.frontmostApplication {
+      AppSwitcher.shared.appActivated(front)
+    }
     observeSystemNotifications()
     multitouchManager.setupMultitouchListener()
     setupDisplayReconfigurationCallback()
@@ -137,6 +140,16 @@ let restartLog = Logger(
       name: NSWorkspace.sessionDidBecomeActiveNotification,
       object: nil
     )
+    center.addObserver(
+      forName: NSWorkspace.didActivateApplicationNotification,
+      object: nil,
+      queue: .main
+    ) { note in
+      guard
+        let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+      else { return }
+      Task { @MainActor in AppSwitcher.shared.appActivated(app) }
+    }
   }
 
   @objc private func receiveSessionResignActiveNote(_ note: Notification) {
