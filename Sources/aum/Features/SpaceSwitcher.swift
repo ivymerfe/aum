@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import CoreGraphics
 import Foundation
 
@@ -10,6 +11,15 @@ func SLSGetActiveSpace(_ cid: Int32) -> UInt64
 
 @_silgen_name("SLSCopyManagedDisplaySpaces")
 func SLSCopyManagedDisplaySpaces(_ cid: Int32) -> Unmanaged<CFArray>?
+
+@_silgen_name("SLSCopySpacesForWindows")
+func SLSCopySpacesForWindows(_ cid: Int32, _ mask: Int32, _ wids: CFArray) -> Unmanaged<CFArray>?
+
+enum SpaceKind {
+  case left
+  case full
+  case desktop
+}
 
 struct SpaceInfo {
   let id: UInt64
@@ -25,37 +35,41 @@ struct SpaceSnapshot {
 @MainActor final class SpaceSwitcher {
   static let shared = SpaceSwitcher()
 
-  private static let repeatInterval: TimeInterval = 0.25
-  private static let desktopKey: Int64 = 13
-  private static let fullscreenKey: Int64 = 14
-  private static let digitKeys: [Int64: Int] = [18: 0, 19: 1, 20: 2, 21: 3]
+  private static let tabKey: Int64 = 48
+  private static let tabHold: TimeInterval = 0.5
+  private static let groupKeys: [Int64: SpaceKind] = [13: .left, 14: .full, 15: .desktop]
+  private static let digitKeys: [Int64: Int] = [18: 0, 19: 1, 20: 2, 21: 3, 23: 4]
+  private static let leftBundles: Set<String> = [
+    "com.brave.Browser", "com.apple.finder", "com.googlecode.iterm2",
+  ]
 
   var syntheticEventsToPassThrough: Int = 0
   var lastGestureTime: CFAbsoluteTime = 0
   var swipeTracking = false
 
-  private let stepWidth = 0.25
   private var stepsApplied = 0
   private var startSpace: UInt64 = 0
-  private var frozenDesktops: [UInt64] = []
-  private var frozenFullscreens: [UInt64] = []
-  private var virtualFull = false
-  private var virtualIndex = 0
+  private var frozenLeft: [UInt64] = []
+  private var frozenRight: [UInt64] = []
+  private var virtualInLeft = false
   private var virtualSpace: UInt64 = 0
   private var expectedFinal: UInt64?
-  private var desktopMRU: [UInt64] = []
-  private var fullscreenMRU: [UInt64] = []
+  private var allMRU: [UInt64] = []
   private var knownSpaces: Set<UInt64> = []
 
-  private var tabFull = false
-  private var tabCode: Int64 = 0
-  private var tabStart: UInt64 = 0
+  private static let gestureHold: TimeInterval = 0.5
+  private static let deadZone = 0.05
+  private var gestureSession = false
+  private var gestureEnd: CFAbsoluteTime = 0
+  private var swipeMoved = false
+
   private var tabSession = false
-  private var tabHeld = false
   private var tabForward = true
   private var tabIndex = 0
-  private var frozenAll: [SpaceInfo] = []
-  private var repeatTimer: Timer?
+  private var tabStart: UInt64 = 0
+  private var expireTimer: Timer?
+
+  private var frozenAll: [UInt64] = []
   private var swallowed: Set<Int64> = []
 
   func startTracking() {
@@ -72,6 +86,7 @@ struct SpaceSnapshot {
   private func spaceChanged() {
     guard let snap = snapshot() else { return }
     if swipeTracking || tabSession { return }
+    if gestureSession && CFAbsoluteTimeGetCurrent() - gestureEnd < Self.gestureHold { return }
     if let expected = expectedFinal {
       if CFAbsoluteTimeGetCurrent() - lastGestureTime > 1.5 {
         expectedFinal = nil
@@ -82,9 +97,7 @@ struct SpaceSnapshot {
         return
       }
     }
-    if let s = snap.spaces.first(where: { $0.id == snap.active }) {
-      promote(s.id, isFull: s.isFull)
-    }
+    promote(snap.active)
   }
 
   private func currentSpace(_ snap: SpaceSnapshot) -> UInt64 {
@@ -118,16 +131,55 @@ struct SpaceSnapshot {
     return SpaceSnapshot(spaces: spaces, active: active, all: all)
   }
 
-  private func promote(_ id: UInt64, isFull: Bool) {
-    desktopMRU.removeAll { !knownSpaces.contains($0) }
-    fullscreenMRU.removeAll { !knownSpaces.contains($0) }
-    if isFull {
-      fullscreenMRU.removeAll { $0 == id }
-      fullscreenMRU.insert(id, at: 0)
-    } else {
-      desktopMRU.removeAll { $0 == id }
-      desktopMRU.insert(id, at: 0)
+  private func classify(_ snap: SpaceSnapshot) -> [UInt64: SpaceKind] {
+    var kinds: [UInt64: SpaceKind] = [:]
+    var fullIds = Set<UInt64>()
+    for s in snap.spaces {
+      if s.isFull {
+        fullIds.insert(s.id)
+        kinds[s.id] = .full
+      } else {
+        kinds[s.id] = .desktop
+      }
     }
+    guard !fullIds.isEmpty,
+      let list = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [[String: Any]]
+    else { return kinds }
+
+    let cid = CGSMainConnectionID()
+    var bundles: [pid_t: String?] = [:]
+    for w in list {
+      guard let pid = w[kCGWindowOwnerPID as String] as? Int32,
+        (w[kCGWindowLayer as String] as? Int) == 0,
+        let id = w[kCGWindowNumber as String] as? UInt32,
+        let b = w[kCGWindowBounds as String] as? [String: Any],
+        let width = b["Width"] as? Double, let height = b["Height"] as? Double,
+        width > 100, height > 100
+      else { continue }
+      let bundle: String?
+      if let cached = bundles[pid] {
+        bundle = cached
+      } else {
+        bundle = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier
+        bundles[pid] = bundle
+      }
+      guard let name = bundle, Self.leftBundles.contains(name) else { continue }
+      let arr = [NSNumber(value: id)] as CFArray
+      guard let raw = SLSCopySpacesForWindows(cid, 0x7, arr)?.takeRetainedValue() else {
+        continue
+      }
+      for s in (raw as NSArray).compactMap({ ($0 as? NSNumber)?.uint64Value })
+      where fullIds.contains(s) {
+        kinds[s] = .left
+      }
+    }
+    return kinds
+  }
+
+  private func promote(_ id: UInt64) {
+    allMRU.removeAll { !knownSpaces.contains($0) }
+    allMRU.removeAll { $0 == id }
+    allMRU.insert(id, at: 0)
   }
 
   private func ordered(_ mru: [UInt64], _ ids: [UInt64]) -> [UInt64] {
@@ -136,73 +188,11 @@ struct SpaceSnapshot {
     return r
   }
 
-  private func commit(_ info: SpaceInfo) {
-    promote(info.id, isFull: info.isFull)
-    expectedFinal = info.id
+  private func commit(_ id: UInt64) {
+    gestureSession = false
+    promote(id)
+    expectedFinal = id
     lastGestureTime = CFAbsoluteTimeGetCurrent()
-  }
-
-  private func beginSwipe() -> Bool {
-    guard let snap = snapshot() else { return false }
-    let activeId = currentSpace(snap)
-    guard let current = snap.spaces.first(where: { $0.id == activeId }) else { return false }
-
-    promote(current.id, isFull: current.isFull)
-    frozenDesktops = ordered(desktopMRU, snap.spaces.filter { !$0.isFull }.map(\.id))
-    frozenFullscreens = ordered(fullscreenMRU, snap.spaces.filter { $0.isFull }.map(\.id))
-    virtualFull = current.isFull
-    virtualIndex = 0
-    virtualSpace = current.id
-    startSpace = current.id
-    stepsApplied = 0
-    expectedFinal = nil
-    return true
-  }
-
-  private func endSwipe() {
-    swipeTracking = false
-    stepsApplied = 0
-    guard virtualSpace != startSpace else { return }
-    promote(virtualSpace, isFull: virtualFull)
-    expectedFinal = virtualSpace
-    lastGestureTime = CFAbsoluteTimeGetCurrent()
-  }
-
-  private func apply(progress: Double) {
-    if progress == 0 { return }
-    let n = (progress > 0 ? 1 : -1) * Int((abs(progress) / stepWidth).rounded(.up))
-    while stepsApplied < n {
-      stepsApplied += 1
-      step(right: true)
-    }
-    while stepsApplied > n {
-      stepsApplied -= 1
-      step(right: false)
-    }
-  }
-
-  private func step(right: Bool) {
-    if right {
-      if virtualFull {
-        guard virtualIndex + 1 < frozenFullscreens.count else { return }
-        virtualIndex += 1
-      } else {
-        guard !frozenFullscreens.isEmpty else { return }
-        virtualFull = true
-        virtualIndex = 0
-      }
-    } else {
-      if !virtualFull {
-        guard virtualIndex + 1 < frozenDesktops.count else { return }
-        virtualIndex += 1
-      } else {
-        guard !frozenDesktops.isEmpty else { return }
-        virtualFull = false
-        virtualIndex = 0
-      }
-    }
-    let list = virtualFull ? frozenFullscreens : frozenDesktops
-    navigate(to: list[virtualIndex])
   }
 
   private func navigate(to target: UInt64) {
@@ -216,21 +206,70 @@ struct SpaceSnapshot {
     virtualSpace = target
     _ = focusRelative(right: delta > 0, count: abs(delta))
   }
-
-  private func beginTab(full: Bool, code: Int64) -> Bool {
+  private func beginSwipe() -> Bool {
     guard let snap = snapshot() else { return false }
-    let activeId = currentSpace(snap)
-    guard let current = snap.spaces.first(where: { $0.id == activeId }) else { return false }
+    let now = CFAbsoluteTimeGetCurrent()
+    let reuse = gestureSession && now - gestureEnd < Self.gestureHold
+    let cur = reuse ? virtualSpace : currentSpace(snap)
+    guard snap.spaces.contains(where: { $0.id == cur }) else { return false }
 
-    promote(current.id, isFull: current.isFull)
-    let byId = Dictionary(snap.spaces.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-    let ids = snap.spaces.filter { $0.isFull == full }.map(\.id)
-    frozenAll = ordered(full ? fullscreenMRU : desktopMRU, ids).compactMap { byId[$0] }
-    tabIndex = current.isFull == full ? 0 : -1
-    tabFull = full
-    tabCode = code
-    tabStart = current.id
-    virtualSpace = current.id
+    if !(reuse && (frozenLeft.contains(cur) || frozenRight.contains(cur))) {
+      let kinds = classify(snap)
+      promote(cur)
+      let sorted = ordered(allMRU, snap.spaces.map(\.id))
+      frozenLeft = sorted.filter { kinds[$0] == .left }
+      frozenRight = sorted.filter { kinds[$0] != .left }
+      expectedFinal = nil
+      gestureSession = true
+      gestureEnd = now
+    }
+    virtualSpace = cur
+    startSpace = cur
+    stepsApplied = 0
+    swipeMoved = false
+    return true
+  }
+
+  private func endSwipe() {
+    swipeTracking = false
+    stepsApplied = 0
+    guard virtualSpace != startSpace else { return }
+    let now = CFAbsoluteTimeGetCurrent()
+    gestureEnd = now
+    lastGestureTime = now
+    expectedFinal = virtualSpace
+  }
+
+  private func apply(progress: Double) {
+    let n = abs(progress) < Self.deadZone ? 0 : (progress > 0 ? 1 : -1)
+    setSteps(n)
+  }
+
+  private func setSteps(_ n: Int) {
+    guard n != stepsApplied else { return }
+    stepsApplied = n
+    if n != 0 { swipeMoved = true }
+    navigate(to: target(for: n))
+  }
+
+  private func target(for n: Int) -> UInt64 {
+    if n == 0 { return startSpace }
+    let list = (n > 0 ? frozenRight : frozenLeft).filter { knownSpaces.contains($0) }
+    guard !list.isEmpty else { return startSpace }
+    if let i = list.firstIndex(of: startSpace) { return list[min(i + 1, list.count - 1)] }
+    return list[0]
+  }
+
+  private func beginTab() -> Bool {
+    guard let snap = snapshot() else { return false }
+    let cur = currentSpace(snap)
+    guard snap.spaces.contains(where: { $0.id == cur }) else { return false }
+
+    promote(cur)
+    frozenAll = ordered(allMRU, snap.spaces.map(\.id))
+    tabIndex = 0
+    tabStart = cur
+    virtualSpace = cur
     expectedFinal = nil
     tabSession = true
     return true
@@ -238,89 +277,127 @@ struct SpaceSnapshot {
 
   private func tabStep() {
     let n = frozenAll.count
-    guard n > (tabIndex < 0 ? 0 : 1) else { return }
-    if tabIndex < 0 {
-      tabIndex = tabForward ? 0 : n - 1
-    } else {
-      tabIndex = (tabIndex + (tabForward ? 1 : n - 1)) % n
-    }
-    navigate(to: frozenAll[tabIndex].id)
+    guard n > 1 else { return }
+    tabIndex = (tabIndex + (tabForward ? 1 : n - 1)) % n
+    navigate(to: frozenAll[tabIndex])
   }
 
-  private func armRepeat() {
-    repeatTimer?.invalidate()
-    repeatTimer = Timer.scheduledTimer(withTimeInterval: Self.repeatInterval, repeats: false) { _ in
-      Task { @MainActor in SpaceSwitcher.shared.repeatTick() }
+  private func armExpire() {
+    expireTimer?.invalidate()
+    expireTimer = Timer.scheduledTimer(withTimeInterval: Self.tabHold, repeats: false) { _ in
+      Task { @MainActor in SpaceSwitcher.shared.endTab() }
     }
-  }
-
-  private func repeatTick() {
-    guard tabSession, tabHeld else { return }
-    tabStep()
-    armRepeat()
   }
 
   private func endTab() {
-    repeatTimer?.invalidate()
-    tabHeld = false
+    expireTimer?.invalidate()
     guard tabSession else { return }
     tabSession = false
-    if virtualSpace != tabStart, frozenAll.indices.contains(tabIndex) {
-      commit(frozenAll[tabIndex])
-    }
+    if virtualSpace != tabStart { commit(virtualSpace) }
     frozenAll = []
     tabIndex = 0
   }
 
+  private func go(from cur: UInt64, to target: UInt64) {
+    guard target != cur else { return }
+    promote(cur)
+    virtualSpace = cur
+    navigate(to: target)
+    commit(target)
+  }
+
+  private func cycle(_ kind: SpaceKind, forward: Bool) {
+    guard let snap = snapshot() else { return }
+    let kinds = classify(snap)
+    let cur = currentSpace(snap)
+    promote(cur)
+    let ids = snap.spaces.map(\.id).filter { kinds[$0] == kind }
+    let list = ordered(allMRU, ids)
+    guard !list.isEmpty else { return }
+    let inGroup = list.first == cur
+    let target: UInt64
+    if forward {
+      target = inGroup ? (list.count > 1 ? list[1] : cur) : list[0]
+    } else {
+      target = list.last!
+    }
+    go(from: cur, to: target)
+  }
+
   private func jump(index: Int) {
     guard let snap = snapshot() else { return }
-    let current = currentSpace(snap)
-    guard let info = snap.spaces.first(where: { $0.id == current }) else { return }
-    let list = snap.spaces.filter { $0.isFull == info.isFull }
+    let kinds = classify(snap)
+    let cur = currentSpace(snap)
+    guard let kind = kinds[cur] else { return }
+    let list = snap.spaces.map(\.id).filter { kinds[$0] == kind }
     guard list.indices.contains(index) else { return }
-    let target = list[index]
-    guard target.id != current else { return }
-    virtualSpace = current
-    navigate(to: target.id)
-    commit(target)
+    go(from: cur, to: list[index])
+  }
+
+  private func toggleFullscreen() {
+    guard let app = NSWorkspace.shared.frontmostApplication else { return }
+    let el = AXUIElementCreateApplication(app.processIdentifier)
+    var raw: CFTypeRef?
+    guard
+      AXUIElementCopyAttributeValue(el, kAXFocusedWindowAttribute as CFString, &raw) == .success,
+      let value = raw,
+      CFGetTypeID(value) == AXUIElementGetTypeID()
+    else { return }
+    let win = value as! AXUIElement
+    var cur: CFTypeRef?
+    AXUIElementCopyAttributeValue(win, "AXFullScreen" as CFString, &cur)
+    let on = (cur as? Bool) ?? false
+    gestureSession = false
+    AXUIElementSetAttributeValue(
+      win, "AXFullScreen" as CFString, on ? kCFBooleanFalse : kCFBooleanTrue)
   }
 
   private func handleKey(type: CGEventType, event: CGEvent) -> Bool {
     let code = event.getIntegerValueField(.keyboardEventKeycode)
     let flags = event.flags
+    let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
 
     switch type {
     case .keyDown:
+      if code == Self.tabKey,
+        flags.contains(.maskCommand),
+        flags.intersection([.maskControl, .maskAlternate]).isEmpty
+      {
+        swallowed.insert(code)
+        if isRepeat { return true }
+        if !tabSession && !beginTab() { return true }
+        tabForward = !flags.contains(.maskShift)
+        tabStep()
+        armExpire()
+        return true
+      }
       guard flags.contains(.maskAlternate),
         flags.intersection([.maskCommand, .maskControl]).isEmpty
       else { return false }
-      if code == Self.desktopKey || code == Self.fullscreenKey {
+      if let kind = Self.groupKeys[code] {
         swallowed.insert(code)
-        if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 { return true }
-        let full = code == Self.fullscreenKey
-        if tabSession && (tabFull != full) { endTab() }
-        if !tabSession && !beginTab(full: full, code: code) { return true }
-        tabHeld = true
-        tabForward = !flags.contains(.maskShift)
-        tabStep()
-        armRepeat()
+        if !isRepeat { cycle(kind, forward: !flags.contains(.maskShift)) }
+        return true
+      }
+      if code == 3, !flags.contains(.maskShift) {
+        swallowed.insert(code)
+        if !isRepeat { toggleFullscreen() }
         return true
       }
       if !flags.contains(.maskShift), let index = Self.digitKeys[code] {
         swallowed.insert(code)
-        if event.getIntegerValueField(.keyboardEventAutorepeat) == 0 { jump(index: index) }
+        if !isRepeat { jump(index: index) }
         return true
       }
       return false
 
     case .keyUp:
       guard swallowed.remove(code) != nil else { return false }
-      if tabSession && code == tabCode { endTab() }
       return true
 
     case .flagsChanged:
       if tabSession {
-        if flags.contains(.maskAlternate) {
+        if flags.contains(.maskCommand) {
           tabForward = !flags.contains(.maskShift)
         } else {
           endTab()
@@ -377,9 +454,9 @@ struct SpaceSnapshot {
           case 4:
             if !swipeTracking { return false }
             apply(progress: event.getDoubleValueField(kCGEventGestureSwipeProgress))
-            if stepsApplied == 0 {
+            if !swipeMoved {
               let velocity = event.getDoubleValueField(kCGEventGestureSwipeVelocityX)
-              if velocity != 0.0 { step(right: velocity > 0) }
+              if velocity != 0.0 { setSteps(velocity > 0 ? 1 : -1) }
             }
             endSwipe()
             event.setDoubleValueField(kCGEventGestureSwipeProgress, value: 0.0)
