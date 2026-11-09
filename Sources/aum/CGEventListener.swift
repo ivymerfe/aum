@@ -55,7 +55,6 @@ extension CGEventMask {
 
     let returnedEvent = Unmanaged.passUnretained(event)
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-      SpaceSwitcher.shared.syntheticEventsToPassThrough = 0
       shared.reenable()
       return returnedEvent
     }

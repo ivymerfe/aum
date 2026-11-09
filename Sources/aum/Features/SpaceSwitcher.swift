@@ -35,15 +35,19 @@ struct SpaceSnapshot {
 @MainActor final class SpaceSwitcher {
   static let shared = SpaceSwitcher()
 
+  private static let marker: Int64 = 0x41554D
+
   private static let tabKey: Int64 = 48
   private static let tabHold: TimeInterval = 0.5
   private static let groupKeys: [Int64: SpaceKind] = [13: .left, 14: .full, 15: .desktop]
   private static let digitKeys: [Int64: Int] = [18: 0, 19: 1, 20: 2, 21: 3, 23: 4]
   private static let leftBundles: Set<String> = [
-    "com.brave.Browser", "com.apple.finder", "com.googlecode.iterm2",
+    "com.brave.Browser",
+    "com.apple.finder",
+    "com.googlecode.iterm2",
+    "com.apple.Safari",
   ]
 
-  var syntheticEventsToPassThrough: Int = 0
   var lastGestureTime: CFAbsoluteTime = 0
   var swipeTracking = false
 
@@ -101,7 +105,9 @@ struct SpaceSnapshot {
   }
 
   private func currentSpace(_ snap: SpaceSnapshot) -> UInt64 {
-    if expectedFinal != nil && CFAbsoluteTimeGetCurrent() - lastGestureTime < 1.5 {
+    if expectedFinal != nil && CFAbsoluteTimeGetCurrent() - lastGestureTime < 1.5,
+      snap.spaces.contains(where: { $0.id == virtualSpace })
+    {
       return virtualSpace
     }
     return snap.active
@@ -196,21 +202,28 @@ struct SpaceSnapshot {
   }
 
   private func navigate(to target: UInt64) {
-    guard let snap = snapshot(),
-      let from = snap.spaces.firstIndex(where: { $0.id == virtualSpace }),
+    guard let snap = snapshot() else { return }
+    let now = CFAbsoluteTimeGetCurrent()
+    if now - lastGestureTime > 0.6 || !snap.spaces.contains(where: { $0.id == virtualSpace }) {
+      virtualSpace = snap.active
+    }
+    guard let from = snap.spaces.firstIndex(where: { $0.id == virtualSpace }),
       let to = snap.spaces.firstIndex(where: { $0.id == target })
     else { return }
     let delta = to - from
     guard delta != 0 else { return }
-    lastGestureTime = CFAbsoluteTimeGetCurrent()
+    lastGestureTime = now
     virtualSpace = target
     _ = focusRelative(right: delta > 0, count: abs(delta))
   }
+
   private func beginSwipe() -> Bool {
     guard let snap = snapshot() else { return false }
     let now = CFAbsoluteTimeGetCurrent()
     let reuse = gestureSession && now - gestureEnd < Self.gestureHold
-    let cur = reuse ? virtualSpace : currentSpace(snap)
+    let cur =
+      reuse && snap.spaces.contains(where: { $0.id == virtualSpace })
+      ? virtualSpace : currentSpace(snap)
     guard snap.spaces.contains(where: { $0.id == cur }) else { return false }
 
     if !(reuse && (frozenLeft.contains(cur) || frozenRight.contains(cur))) {
@@ -416,23 +429,9 @@ struct SpaceSnapshot {
     if type == .keyDown || type == .keyUp || type == .flagsChanged {
       return handleKey(type: type, event: event)
     }
-
-    if syntheticEventsToPassThrough > 0
-      && CFAbsoluteTimeGetCurrent() - lastGestureTime >= 1.0
-    {
-      syntheticEventsToPassThrough = 0
-    }
-    if syntheticEventsToPassThrough > 0
-      && (type == kCGSEventDockControl || type == kCGSEventGesture)
-    {
-      syntheticEventsToPassThrough -= 1
-      return false
-    }
     if type == kCGSEventDockControl || type == kCGSEventGesture {
-      let sourcePid = event.getIntegerValueField(.eventSourceUnixProcessID)
-      if sourcePid != 0 {
-        return false
-      }
+      if event.getIntegerValueField(.eventSourceUserData) == Self.marker { return false }
+      if event.getIntegerValueField(.eventSourceUnixProcessID) != 0 { return false }
     }
     if type == kCGSEventDockControl {
       let hidType = event.getIntegerValueField(kCGEventGestureHIDType)
@@ -519,7 +518,8 @@ struct SpaceSnapshot {
     guard let companion = CGEvent(source: nil) else { return false }
     companion.setIntegerValueField(kCGSEventTypeField, value: Int64(kCGSEventGesture.rawValue))
 
-    syntheticEventsToPassThrough += 2
+    augmented.setIntegerValueField(.eventSourceUserData, value: Self.marker)
+    companion.setIntegerValueField(.eventSourceUserData, value: Self.marker)
 
     augmented.post(tap: .cgSessionEventTap)
     companion.post(tap: .cgSessionEventTap)
