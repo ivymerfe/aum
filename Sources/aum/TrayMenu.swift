@@ -184,58 +184,71 @@ import os
   // Keyboard
   @objc private func toggleAltKeys(sender: NSButton) {
     config.altKeys = (altKeysItem.state == .off)
+    altKeysItem.state = config.altKeys ? .on : .off
   }
 
   @objc private func toggleLayoutSwitcher(sender: NSButton) {
     config.layoutSwitcher = (layoutSwitcherItem.state == .off)
+    layoutSwitcherItem.state = config.layoutSwitcher ? .on : .off
     LayoutSwitcher.shared.reload()
   }
 
   @objc private func toggleWindowControls(sender: NSButton) {
     config.windowControls = (windowControlsItem.state == .off)
+    windowControlsItem.state = config.windowControls ? .on : .off
   }
 
   // Other
   @objc private func toggleBetterDisplayRotation(sender: NSButton) {
     config.betterDisplayRotation = (betterDisplayRotationItem.state == .off)
+    betterDisplayRotationItem.state = config.betterDisplayRotation ? .on : .off
   }
 
   @objc private func toggleInverseScrolling(sender: NSButton) {
     config.inverseScrolling = (inverseScrollingItem.state == .off)
+    inverseScrollingItem.state = config.inverseScrolling ? .on : .off
   }
 
   // Switcher
   @objc private func toggleCmdTabSwitcher(sender: NSButton) {
     config.cmdTabSwitcher = (cmdTabSwitcherItem.state == .off)
+    cmdTabSwitcherItem.state = config.cmdTabSwitcher ? .on : .off
   }
 
   @objc private func toggleAltTapSwitcher(sender: NSButton) {
     config.altTapSwitcher = (altTapSwitcherItem.state == .off)
+    altTapSwitcherItem.state = config.altTapSwitcher ? .on : .off
   }
 
   @objc private func toggleGroupSwitcher(sender: NSButton) {
     config.groupSwitcher = (groupSwitcherItem.state == .off)
+    groupSwitcherItem.state = config.groupSwitcher ? .on : .off
   }
 
   @objc private func toggleGestureSwitcher(sender: NSButton) {
     config.gestureSwitcher = (gestureSwitcherItem.state == .off)
+    gestureSwitcherItem.state = config.gestureSwitcher ? .on : .off
   }
 
   // Touch
   @objc private func toggleTouchMiddleClick(sender: NSButton) {
     config.touchMiddleClick = (touchMiddleClickItem.state == .off)
+    touchMiddleClickItem.state = config.touchMiddleClick ? .on : .off
   }
 
   @objc private func toggleTapToClick(sender: NSButton) {
     config.tapToClick = sender.state == .off
+    tapToClickItem.state = config.tapToClick ? .on : .off
   }
 
   @objc private func toggleTouchNavigation(sender: NSButton) {
     config.touchNavigation = (touchNavigationItem.state == .off)
+    touchNavigationItem.state = config.touchNavigation ? .on : .off
   }
 
   @objc private func toggleTouchRightClick(sender: NSButton) {
     config.touchRightClick = (touchRightClickItem.state == .off)
+    touchRightClickItem.state = config.touchRightClick ? .on : .off
   }
 
   @objc private func openAccessibilitySettings() {
