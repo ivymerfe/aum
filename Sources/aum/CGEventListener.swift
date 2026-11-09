@@ -40,6 +40,23 @@ extension CGEventMask {
   }
 }
 
+let kSyntheticEventMarker: Int64 = 0x41554D
+
+func isSyntheticEvent(_ event: CGEvent) -> Bool {
+  event.getIntegerValueField(.eventSourceUserData) == kSyntheticEventMarker
+}
+
+func markSynthetic(_ event: CGEvent) {
+  event.setIntegerValueField(.eventSourceUserData, value: kSyntheticEventMarker)
+}
+
+func isUserActionEvent(_ type: CGEventType) -> Bool {
+  switch type {
+  case .keyDown, .leftMouseDown, .rightMouseDown, .scrollWheel: return true
+  default: return false
+  }
+}
+
 @MainActor class CGEventListener {
   static let shared = CGEventListener()
   static let config = Config.shared
@@ -58,16 +75,29 @@ extension CGEventMask {
       shared.reenable()
       return returnedEvent
     }
-    // if AppSwitcher.shared.handleEvent(type: type, event: event) {
-    //   return nil
-    // }
-    if InverseScrolling.shared.handleEvent(type: type, event: event) {
-      return nil
+    if isSyntheticEvent(event) {
+      return returnedEvent
+    }
+    if isUserActionEvent(type) {
+      TouchSwitcher.shared.userAction()
+      MruSwitcher.shared.userAction(type, event)
     }
     if LayoutSwitcher.shared.handleEvent(type: type, event: event) {
       return nil
     }
-    if SpaceSwitcher.shared.handleEvent(type: type, event: event) {
+    if WindowControls.shared.handleEvent(type: type, event: event) {
+      return nil
+    }
+    if InverseScrolling.shared.handleEvent(type: type, event: event) {
+      return nil
+    }
+    if GroupSwitcher.shared.handleEvent(type: type, event: event) {
+      return nil
+    }
+    if MruSwitcher.shared.handleEvent(type: type, event: event) {
+      return nil
+    }
+    if TouchSwitcher.shared.handleEvent(type: type, event: event) {
       return nil
     }
     if TouchMiddleClick.shared.handleEvent(type: type, event: event) {

@@ -16,11 +16,18 @@ import os
   private var launchAtLoginItem: NSMenuItem!
   let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
-  private var appSwitcherItem: NSMenuItem!
+  private var altKeysItem: NSMenuItem!
+  private var layoutSwitcherItem: NSMenuItem!
+  private var windowControlsItem: NSMenuItem!
+
   private var betterDisplayRotationItem: NSMenuItem!
   private var inverseScrollingItem: NSMenuItem!
-  private var layoutSwitcherItem: NSMenuItem!
-  private var spaceSwitcherItem: NSMenuItem!
+
+  private var cmdTabSwitcherItem: NSMenuItem!
+  private var altTapSwitcherItem: NSMenuItem!
+  private var groupSwitcherItem: NSMenuItem!
+  private var gestureSwitcherItem: NSMenuItem!
+
   private var touchMiddleClickItem: NSMenuItem!
   private var tapToClickItem: NSMenuItem!
   private var touchNavigationItem: NSMenuItem!
@@ -79,11 +86,26 @@ import os
 
     menu.addSeparator()
 
-    appSwitcherItem = menu.addItem(
-      withTitle: "AppSwitcher",
-      action: #selector(toggleAppSwitcher),
+    altKeysItem = menu.addItem(
+      withTitle: "AltKeys",
+      action: #selector(toggleAltKeys),
       target: self
     )
+
+    layoutSwitcherItem = menu.addItem(
+      withTitle: "LayoutSwitcher",
+      action: #selector(toggleLayoutSwitcher),
+      target: self
+    )
+
+    windowControlsItem = menu.addItem(
+      withTitle: "WindowControls",
+      action: #selector(toggleWindowControls),
+      target: self
+    )
+
+    menu.addSeparator()
+
     betterDisplayRotationItem = menu.addItem(
       withTitle: "BetterDisplayRotation",
       action: #selector(toggleBetterDisplayRotation),
@@ -94,16 +116,32 @@ import os
       action: #selector(toggleInverseScrolling),
       target: self
     )
-    layoutSwitcherItem = menu.addItem(
-      withTitle: "LayoutSwitcher",
-      action: #selector(toggleLayoutSwitcher),
+
+    menu.addSeparator()
+
+    cmdTabSwitcherItem = menu.addItem(
+      withTitle: "Switcher - CmdTab",
+      action: #selector(toggleCmdTabSwitcher),
       target: self
     )
-    spaceSwitcherItem = menu.addItem(
-      withTitle: "SpaceSwitcher",
-      action: #selector(toggleSpaceSwitcher),
+    altTapSwitcherItem = menu.addItem(
+      withTitle: "Switcher - Alt tap",
+      action: #selector(toggleAltTapSwitcher),
       target: self
     )
+    groupSwitcherItem = menu.addItem(
+      withTitle: "Switcher - Groups",
+      action: #selector(toggleGroupSwitcher),
+      target: self
+    )
+    gestureSwitcherItem = menu.addItem(
+      withTitle: "Switcher - Gestures",
+      action: #selector(toggleGestureSwitcher),
+      target: self
+    )
+
+    menu.addSeparator()
+
     touchMiddleClickItem = menu.addItem(
       withTitle: "TouchMiddleClick",
       action: #selector(toggleTouchMiddleClick),
@@ -123,11 +161,18 @@ import os
       target: self
     )
 
-    appSwitcherItem.state = config.appSwitcher ? .on : .off
+    altKeysItem.state = config.altKeys ? .on : .off
+    layoutSwitcherItem.state = config.layoutSwitcher ? .on : .off
+    windowControlsItem.state = config.windowControls ? .on : .off
+
     betterDisplayRotationItem.state = config.betterDisplayRotation ? .on : .off
     inverseScrollingItem.state = config.inverseScrolling ? .on : .off
-    layoutSwitcherItem.state = config.layoutSwitcher ? .on : .off
-    spaceSwitcherItem.state = config.spaceSwitcher ? .on : .off
+
+    cmdTabSwitcherItem.state = config.cmdTabSwitcher ? .on : .off
+    altTapSwitcherItem.state = config.altTapSwitcher ? .on : .off
+    groupSwitcherItem.state = config.groupSwitcher ? .on : .off
+    gestureSwitcherItem.state = config.gestureSwitcher ? .on : .off
+
     touchMiddleClickItem.state = config.touchMiddleClick ? .on : .off
     tapToClickItem.state = config.tapToClick ? .on : .off
     touchNavigationItem.state = config.touchNavigation ? .on : .off
@@ -136,10 +181,21 @@ import os
     return menu
   }
 
-  @objc private func toggleAppSwitcher(sender: NSButton) {
-    config.appSwitcher = sender.state == .off
+  // Keyboard
+  @objc private func toggleAltKeys(sender: NSButton) {
+    config.altKeys = (altKeysItem.state == .off)
   }
 
+  @objc private func toggleLayoutSwitcher(sender: NSButton) {
+    config.layoutSwitcher = (layoutSwitcherItem.state == .off)
+    LayoutSwitcher.shared.reload()
+  }
+
+  @objc private func toggleWindowControls(sender: NSButton) {
+    config.windowControls = (windowControlsItem.state == .off)
+  }
+
+  // Other
   @objc private func toggleBetterDisplayRotation(sender: NSButton) {
     config.betterDisplayRotation = (betterDisplayRotationItem.state == .off)
   }
@@ -148,15 +204,24 @@ import os
     config.inverseScrolling = (inverseScrollingItem.state == .off)
   }
 
-  @objc private func toggleLayoutSwitcher(sender: NSButton) {
-    config.layoutSwitcher = (layoutSwitcherItem.state == .off)
-    LayoutSwitcher.shared.reload()
+  // Switcher
+  @objc private func toggleCmdTabSwitcher(sender: NSButton) {
+    config.cmdTabSwitcher = (cmdTabSwitcherItem.state == .off)
   }
 
-  @objc private func toggleSpaceSwitcher(sender: NSButton) {
-    config.spaceSwitcher = (spaceSwitcherItem.state == .off)
+  @objc private func toggleAltTapSwitcher(sender: NSButton) {
+    config.altTapSwitcher = (altTapSwitcherItem.state == .off)
   }
 
+  @objc private func toggleGroupSwitcher(sender: NSButton) {
+    config.groupSwitcher = (groupSwitcherItem.state == .off)
+  }
+
+  @objc private func toggleGestureSwitcher(sender: NSButton) {
+    config.gestureSwitcher = (gestureSwitcherItem.state == .off)
+  }
+
+  // Touch
   @objc private func toggleTouchMiddleClick(sender: NSButton) {
     config.touchMiddleClick = (touchMiddleClickItem.state == .off)
   }
