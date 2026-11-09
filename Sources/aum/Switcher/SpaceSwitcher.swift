@@ -63,16 +63,16 @@ struct SpaceSnapshot {
     }
 
     private func spaceChanged() {
-        let u = SpaceSwitcher.shared
-        guard let snap = u.snapshot() else { return }
+        let switcher = SpaceSwitcher.shared
+        guard let snap = switcher.snapshot() else { return }
         if TouchSwitcher.shared.swipeTracking { return }
         let now = CFAbsoluteTimeGetCurrent()
         if TouchSwitcher.shared.pending || MruSwitcher.shared.pending {
-            if now - u.lastGestureTime < 1.0 || snap.active == u.virtualSpace { return }
+            if now - switcher.lastGestureTime < 1.0 || snap.active == switcher.virtualSpace { return }
             commitAll()
         }
         if let expected = expectedFinal {
-            if now - u.lastGestureTime > 1.5 {
+            if now - switcher.lastGestureTime > 1.5 {
                 expectedFinal = nil
             } else if snap.active == expected {
                 expectedFinal = nil
@@ -105,10 +105,10 @@ struct SpaceSnapshot {
 
     func go(from cur: UInt64, to target: UInt64) {
         guard target != cur else { return }
-        let u = SpaceSwitcher.shared
+        let switcher = SpaceSwitcher.shared
         promote(cur)
-        u.virtualSpace = cur
-        u.navigate(to: target)
+        switcher.virtualSpace = cur
+        switcher.navigate(to: target)
         commit(target)
     }
 

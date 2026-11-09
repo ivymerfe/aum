@@ -30,21 +30,21 @@ import CoreGraphics
     }
 
     private func beginSession() -> Bool {
-        let u = SpaceSwitcher.shared
-        guard let snap = u.snapshot() else { return false }
-        let cur = u.currentSpace(snap)
+        let switcher = SpaceSwitcher.shared
+        guard let snap = switcher.snapshot() else { return false }
+        let cur = switcher.currentSpace(snap)
         guard snap.spaces.contains(where: { $0.id == cur }) else { return false }
 
-        let kinds = u.classify(snap)
-        u.promote(cur)
-        let sorted = u.ordered(snap.spaces.map(\.id))
+        let kinds = switcher.classify(snap)
+        switcher.promote(cur)
+        let sorted = switcher.ordered(snap.spaces.map(\.id))
         let left = sorted.filter { kinds[$0] == .special }
         let right = sorted.filter { kinds[$0] != .special }
         line = left.reversed() + right
         startIndex = kinds[cur] == .special ? left.count - 1 : left.count
         cursor = startIndex
-        u.virtualSpace = cur
-        u.expectedFinal = nil
+        switcher.virtualSpace = cur
+        switcher.expectedFinal = nil
         session = true
         return true
     }
