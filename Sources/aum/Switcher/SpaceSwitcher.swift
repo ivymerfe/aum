@@ -33,6 +33,11 @@ struct SpaceSnapshot {
 @MainActor final class SpaceSwitcher {
     static let shared = SpaceSwitcher()
 
+    private static let chainWindow: TimeInterval = 0.6
+    private static let sessionSettleTime: TimeInterval = 1.0
+    private static let expectedFinalTimeout: TimeInterval = 1.5
+    private static let virtualSpaceTimeout: TimeInterval = 1.5
+
     private static let specialBundles: Set<String> = [
         "com.brave.Browser",
         "com.apple.finder",
@@ -68,11 +73,15 @@ struct SpaceSnapshot {
         if TouchSwitcher.shared.swipeTracking { return }
         let now = CFAbsoluteTimeGetCurrent()
         if TouchSwitcher.shared.pending || MruSwitcher.shared.pending {
-            if now - switcher.lastGestureTime < 1.0 || snap.active == switcher.virtualSpace { return }
+            if now - switcher.lastGestureTime < Self.sessionSettleTime
+                || snap.active == switcher.virtualSpace
+            {
+                return
+            }
             commitAll()
         }
         if let expected = expectedFinal {
-            if now - switcher.lastGestureTime > 1.5 {
+            if now - switcher.lastGestureTime > Self.expectedFinalTimeout {
                 expectedFinal = nil
             } else if snap.active == expected {
                 expectedFinal = nil
@@ -113,7 +122,7 @@ struct SpaceSnapshot {
     }
 
     func currentSpace(_ snap: SpaceSnapshot) -> UInt64 {
-        if CFAbsoluteTimeGetCurrent() - lastGestureTime < 1.5,
+        if CFAbsoluteTimeGetCurrent() - lastGestureTime < Self.virtualSpaceTimeout,
             snap.spaces.contains(where: { $0.id == virtualSpace })
         {
             return virtualSpace
@@ -193,7 +202,9 @@ struct SpaceSnapshot {
     func navigate(to target: UInt64) {
         guard let snap = snapshot() else { return }
         let now = CFAbsoluteTimeGetCurrent()
-        if now - lastGestureTime > 0.6 || !snap.spaces.contains(where: { $0.id == virtualSpace }) {
+        if now - lastGestureTime > Self.chainWindow
+            || !snap.spaces.contains(where: { $0.id == virtualSpace })
+        {
             virtualSpace = snap.active
         }
         guard let from = snap.spaces.firstIndex(where: { $0.id == virtualSpace }),
