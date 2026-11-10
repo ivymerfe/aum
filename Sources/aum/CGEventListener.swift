@@ -50,13 +50,6 @@ func markSynthetic(_ event: CGEvent) {
   event.setIntegerValueField(.eventSourceUserData, value: kSyntheticEventMarker)
 }
 
-func isUserActionEvent(_ type: CGEventType) -> Bool {
-  switch type {
-  case .keyDown, .leftMouseDown, .rightMouseDown, .scrollWheel: return true
-  default: return false
-  }
-}
-
 @MainActor class CGEventListener {
   static let shared = CGEventListener()
   static let config = Config.shared
@@ -77,10 +70,6 @@ func isUserActionEvent(_ type: CGEventType) -> Bool {
     }
     if isSyntheticEvent(event) {
       return returnedEvent
-    }
-    if isUserActionEvent(type) {
-      TouchSwitcher.shared.userAction()
-      MruSwitcher.shared.userAction(type, event)
     }
     if LayoutSwitcher.shared.handleEvent(type: type, event: event) {
       return nil

@@ -16,10 +16,6 @@ import CoreGraphics
 
     var pending: Bool { session }
 
-    func userAction() {
-        commit()
-    }
-
     func commit() {
         guard session, !swipeTracking else { return }
         session = false
@@ -79,6 +75,12 @@ import CoreGraphics
     }
 
     func handleEvent(type: CGEventType, event: CGEvent) -> Bool {
+        switch type {
+        case .keyDown, .keyUp, .flagsChanged, .leftMouseDown, .rightMouseDown, .scrollWheel:
+            commit()
+        default:
+            break
+        }
         guard Config.shared.gestureSwitcher else { return false }
 
         if type == kCGSEventDockControl || type == kCGSEventGesture {

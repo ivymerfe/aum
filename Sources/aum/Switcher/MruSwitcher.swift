@@ -20,18 +20,6 @@ import CoreGraphics
 
     var pending: Bool { session }
 
-    func userAction(_ type: CGEventType, _ event: CGEvent) {
-        if optionDown { optionDirty = true }
-        guard session else { return }
-        if type == .keyDown,
-            event.getIntegerValueField(.keyboardEventKeycode) == Self.tabKey,
-            event.flags.contains(.maskCommand)
-        {
-            return
-        }
-        commit()
-    }
-
     func commit() {
         guard session else { return }
         session = false
@@ -77,7 +65,38 @@ import CoreGraphics
         switcher.go(from: cur, to: prev)
     }
 
+    private func trackActivity(_ type: CGEventType, _ event: CGEvent) {
+        let code = event.getIntegerValueField(.keyboardEventKeycode)
+        let flags = event.flags
+
+        switch type {
+        case .keyDown, .keyUp, .leftMouseDown, .rightMouseDown, .scrollWheel:
+            break
+        case .flagsChanged:
+            if code == 58 || code == 61 { return }
+        default:
+            return
+        }
+
+        if optionDown { optionDirty = true }
+        guard session else { return }
+
+        let own: Bool
+        switch type {
+        case .keyDown, .keyUp:
+            own = code == Self.tabKey && flags.contains(.maskCommand)
+        case .flagsChanged:
+            own =
+                flags.contains(.maskCommand)
+                && flags.intersection([.maskControl, .maskAlternate]).isEmpty
+        default:
+            own = false
+        }
+        if !own { commit() }
+    }
+
     func handleEvent(type: CGEventType, event: CGEvent) -> Bool {
+        trackActivity(type, event)
         let code = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
 
