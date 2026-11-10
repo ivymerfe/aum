@@ -78,7 +78,10 @@ import CoreGraphics
             return
         }
 
-        if optionDown { optionDirty = true }
+        let momentum =
+            type == .scrollWheel
+            && event.getIntegerValueField(.scrollWheelEventMomentumPhase) != 0
+        if optionDown && !momentum { optionDirty = true }
         guard session else { return }
 
         let own: Bool
