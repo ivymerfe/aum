@@ -65,6 +65,7 @@ struct SpaceSnapshot {
     func commitAll() {
         TouchSwitcher.shared.commit()
         MruSwitcher.shared.commit()
+        GroupSwitcher.shared.commit()
     }
 
     private func spaceChanged() {
@@ -72,7 +73,9 @@ struct SpaceSnapshot {
         guard let snap = switcher.snapshot() else { return }
         if TouchSwitcher.shared.swipeTracking { return }
         let now = CFAbsoluteTimeGetCurrent()
-        if TouchSwitcher.shared.pending || MruSwitcher.shared.pending {
+        if TouchSwitcher.shared.pending || MruSwitcher.shared.pending
+            || GroupSwitcher.shared.pending
+        {
             if now - switcher.lastGestureTime < Self.sessionSettleTime
                 || snap.active == switcher.virtualSpace
             {

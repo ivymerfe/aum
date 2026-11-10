@@ -98,8 +98,12 @@ import CoreGraphics
         if !own { commit() }
     }
 
-    func handleEvent(type: CGEventType, event: CGEvent) -> Bool {
+    func observe(type: CGEventType, event: CGEvent) {
         trackActivity(type, event)
+        if type == .flagsChanged { handleOption(event.flags) }
+    }
+
+    func handleEvent(type: CGEventType, event: CGEvent) -> Bool {
         let code = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
 
@@ -128,7 +132,6 @@ import CoreGraphics
                     commit()
                 }
             }
-            handleOption(flags)
             return false
 
         default:

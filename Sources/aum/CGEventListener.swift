@@ -71,6 +71,7 @@ func markSynthetic(_ event: CGEvent) {
     if isSyntheticEvent(event) {
       return returnedEvent
     }
+    MruSwitcher.shared.observe(type: type, event: event)
     if LayoutSwitcher.shared.handleEvent(type: type, event: event) {
       return nil
     }
