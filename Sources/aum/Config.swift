@@ -11,6 +11,13 @@
     @UserDefault var groupSwitcher = true
     @UserDefault var gestureSwitcher = true
 
+    @UserDefault var specialBundles: Set<String> = [
+        "com.brave.Browser",
+        "com.apple.finder",
+        "com.googlecode.iterm2",
+        "com.apple.Safari",
+    ]
+
     @UserDefault var touchMiddleClick = true
     @UserDefault var tapToClick = SystemPermissions.getIsSystemTapToClickEnabled
     @UserDefault var touchNavigation = true

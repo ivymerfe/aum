@@ -27,6 +27,7 @@ import os
   private var altTapSwitcherItem: NSMenuItem!
   private var groupSwitcherItem: NSMenuItem!
   private var gestureSwitcherItem: NSMenuItem!
+  private var specialItem: NSMenuItem!
 
   private var touchMiddleClickItem: NSMenuItem!
   private var tapToClickItem: NSMenuItem!
@@ -54,6 +55,13 @@ import os
     statusItem.button?.appearsDisabled = !hasAccessibilityPermission
     accessibilityPermissionStatusItem.isHidden = hasAccessibilityPermission
     accessibilityPermissionActionItem.isHidden = hasAccessibilityPermission
+  }
+
+  private func frontmostApp() -> NSRunningApplication? {
+    guard let app = NSWorkspace.shared.frontmostApplication,
+      app.bundleIdentifier != Bundle.main.bundleIdentifier
+    else { return nil }
+    return app
   }
 
   private func createMenu() -> NSMenu {
@@ -140,6 +148,12 @@ import os
       target: self
     )
 
+    specialItem = menu.addItem(
+      withTitle: "Set as special",
+      action: #selector(toggleSpecial),
+      target: self
+    )
+
     menu.addSeparator()
 
     touchMiddleClickItem = menu.addItem(
@@ -179,6 +193,18 @@ import os
     touchRightClickItem.state = config.touchRightClick ? .on : .off
 
     return menu
+  }
+
+  func menuWillOpen(_ menu: NSMenu) {
+    guard let app = frontmostApp(), let id = app.bundleIdentifier else {
+      specialItem.title = "Set as special"
+      specialItem.isEnabled = false
+      return
+    }
+    let name = app.localizedName ?? id
+    let isSpecial = config.specialBundles.contains(id)
+    specialItem.title = isSpecial ? "Remove special: \(name)" : "Set as special: \(name)"
+    specialItem.isEnabled = true
   }
 
   // Keyboard
@@ -228,6 +254,13 @@ import os
   @objc private func toggleGestureSwitcher(sender: NSButton) {
     config.gestureSwitcher = (gestureSwitcherItem.state == .off)
     gestureSwitcherItem.state = config.gestureSwitcher ? .on : .off
+  }
+
+  @objc private func toggleSpecial() {
+    guard let id = frontmostApp()?.bundleIdentifier else { return }
+    var set = config.specialBundles
+    if set.contains(id) { set.remove(id) } else { set.insert(id) }
+    config.specialBundles = set
   }
 
   // Touch

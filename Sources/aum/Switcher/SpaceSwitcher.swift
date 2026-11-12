@@ -38,13 +38,6 @@ struct SpaceSnapshot {
     private static let expectedFinalTimeout: TimeInterval = 1.5
     private static let virtualSpaceTimeout: TimeInterval = 1.5
 
-    private static let specialBundles: Set<String> = [
-        "com.brave.Browser",
-        "com.apple.finder",
-        "com.googlecode.iterm2",
-        "com.apple.Safari",
-    ]
-
     var lastGestureTime: CFAbsoluteTime = 0
     var virtualSpace: UInt64 = 0
     private(set) var knownSpaces: Set<UInt64> = []
@@ -189,7 +182,7 @@ struct SpaceSnapshot {
                 bundle = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier
                 bundles[pid] = bundle
             }
-            guard let name = bundle, Self.specialBundles.contains(name) else { continue }
+            guard let name = bundle, Config.shared.specialBundles.contains(name) else { continue }
             let arr = [NSNumber(value: id)] as CFArray
             guard let raw = SLSCopySpacesForWindows(cid, 0x7, arr)?.takeRetainedValue() else {
                 continue
