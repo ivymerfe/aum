@@ -78,7 +78,7 @@ func markSynthetic(_ event: CGEvent) {
     if WindowControls.shared.handleEvent(type: type, event: event) {
       return nil
     }
-    if InverseScrolling.shared.handleEvent(type: type, event: event) {
+    if SmoothScrolling.shared.handleEvent(type: type, event: event) {
       return nil
     }
     if GroupSwitcher.shared.handleEvent(type: type, event: event) {

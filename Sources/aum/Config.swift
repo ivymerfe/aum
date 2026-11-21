@@ -4,7 +4,7 @@
     @UserDefault var windowControls = true
 
     @UserDefault var betterDisplayRotation = true
-    @UserDefault var inverseScrolling = true
+    @UserDefault var smoothScrolling = true
 
     @UserDefault var cmdTabSwitcher = true
     @UserDefault var altTapSwitcher = true

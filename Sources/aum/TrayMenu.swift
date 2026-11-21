@@ -21,7 +21,7 @@ import os
   private var windowControlsItem: NSMenuItem!
 
   private var betterDisplayRotationItem: NSMenuItem!
-  private var inverseScrollingItem: NSMenuItem!
+  private var smoothScrollingItem: NSMenuItem!
 
   private var cmdTabSwitcherItem: NSMenuItem!
   private var altTapSwitcherItem: NSMenuItem!
@@ -119,9 +119,9 @@ import os
       action: #selector(toggleBetterDisplayRotation),
       target: self
     )
-    inverseScrollingItem = menu.addItem(
-      withTitle: "InverseScrolling",
-      action: #selector(toggleInverseScrolling),
+    smoothScrollingItem = menu.addItem(
+      withTitle: "SmoothScrolling",
+      action: #selector(toggleSmoothScrolling),
       target: self
     )
 
@@ -180,7 +180,7 @@ import os
     windowControlsItem.state = config.windowControls ? .on : .off
 
     betterDisplayRotationItem.state = config.betterDisplayRotation ? .on : .off
-    inverseScrollingItem.state = config.inverseScrolling ? .on : .off
+    smoothScrollingItem.state = config.smoothScrolling ? .on : .off
 
     cmdTabSwitcherItem.state = config.cmdTabSwitcher ? .on : .off
     altTapSwitcherItem.state = config.altTapSwitcher ? .on : .off
@@ -230,9 +230,9 @@ import os
     betterDisplayRotationItem.state = config.betterDisplayRotation ? .on : .off
   }
 
-  @objc private func toggleInverseScrolling(sender: NSButton) {
-    config.inverseScrolling = (inverseScrollingItem.state == .off)
-    inverseScrollingItem.state = config.inverseScrolling ? .on : .off
+  @objc private func toggleSmoothScrolling(sender: NSButton) {
+    config.smoothScrolling = (smoothScrollingItem.state == .off)
+    smoothScrollingItem.state = config.smoothScrolling ? .on : .off
   }
 
   // Switcher
