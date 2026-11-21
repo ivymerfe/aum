@@ -23,9 +23,33 @@ import QuartzCore
     return baseSpeed * pow(1 + rate / rateScale, rateExponent)
   }
 
+  private var trackpadMomentum = false
+  private var momentumKilled = false
+
   func handleEvent(type: CGEventType, event: CGEvent) -> Bool {
     guard Config.shared.smoothScrolling, type == .scrollWheel else { return false }
-    guard event.getIntegerValueField(.scrollWheelEventIsContinuous) == 0 else { return false }
+    let phase = event.getIntegerValueField(.scrollWheelEventScrollPhase)
+    let momentum = event.getIntegerValueField(.scrollWheelEventMomentumPhase)
+    let isContinuous = event.getIntegerValueField(.scrollWheelEventIsContinuous) != 0
+
+    if isContinuous || phase != 0 || momentum != 0 {
+      if momentum != 0 {
+        if momentumKilled {
+          if momentum == 3 { momentumKilled = false }
+          return true
+        }
+        trackpadMomentum = momentum != 3
+        return false
+      }
+      if phase == 1 || phase == 128 {
+        momentumKilled = false
+        trackpadMomentum = false
+        cancel()
+      }
+      return false
+    }
+
+    if trackpadMomentum { stopMomentum() }
 
     let fields: [(CGEventField, CGEventField)] = [
       (.scrollWheelEventDeltaAxis1, .scrollWheelEventFixedPtDeltaAxis1),
@@ -52,6 +76,27 @@ import QuartzCore
     return true
   }
 
+  private func postPhase(scroll: Int64, momentum: Int64) {
+    guard
+      let e = CGEvent(
+        scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2,
+        wheel1: 0, wheel2: 0, wheel3: 0)
+    else { return }
+    e.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+    e.setIntegerValueField(.scrollWheelEventScrollPhase, value: scroll)
+    e.setIntegerValueField(.scrollWheelEventMomentumPhase, value: momentum)
+    markSynthetic(e)
+    e.post(tap: .cghidEventTap)
+  }
+
+  private func stopMomentum() {
+    trackpadMomentum = false
+    momentumKilled = true
+    postPhase(scroll: 0, momentum: 3)
+    postPhase(scroll: 1, momentum: 0)
+    postPhase(scroll: 4, momentum: 0)
+  }
+
   private func start() {
     guard timer == nil else { return }
     lastTime = CACurrentMediaTime()
@@ -66,6 +111,15 @@ import QuartzCore
   private static let zeta = 1.1
 
   private var velocity = [0.0, 0.0]
+
+  private func cancel() {
+    remaining = [0, 0]
+    velocity = [0, 0]
+    carry = [0, 0]
+    history = [[], []]
+    timer?.invalidate()
+    timer = nil
+  }
 
   private func step() {
     let now = CACurrentMediaTime()
@@ -93,6 +147,7 @@ import QuartzCore
         scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2,
         wheel1: out[0], wheel2: out[1], wheel3: 0)
     {
+      markSynthetic(e)
       e.post(tap: .cghidEventTap)
     }
 
