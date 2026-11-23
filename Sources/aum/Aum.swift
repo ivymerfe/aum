@@ -32,6 +32,7 @@ let restartLog = Logger(
     BetterDisplayRotation.shared.handleTouch(touches: touches, nFingers: nFingers)
     TouchRightClick.shared.handleTouch(touches: touches, nFingers: nFingers)
     TouchMiddleClick.shared.handleTouch(touches: touches, nFingers: nFingers)
+    TouchSwitcher.shared.updateFingers(Int(nFingers))
     return
   }
 

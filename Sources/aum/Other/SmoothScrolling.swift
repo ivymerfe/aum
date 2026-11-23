@@ -5,13 +5,9 @@ import QuartzCore
 @MainActor final class SmoothScrolling {
   static let shared = SmoothScrolling()
 
-  private static let omega = 35.0
-  private static let zeta = 1.3
-
-  private static let window = 0.25
+  private static let window = 0.5
 
   private var remaining = [0.0, 0.0]
-  private var velocity = [0.0, 0.0]
   private var carry = [0.0, 0.0]
   private var history: [[Double]] = [[], []]
   private var lastSign = [0.0, 0.0]
@@ -20,16 +16,14 @@ import QuartzCore
   private var trackpadMomentum = false
   private var momentumKilled = false
 
-  private static let fps = 227.0
-  private var lastTime = 0.0
+  private static let fps = 240.0
   private var timer: Timer?
 
-  private static func speed(for r: Double) -> Double {
-    return max(200, r / 0.09)
-  }
+  private static let duration = 0.15
+  private var rate = [0.0, 0.0]
 
   private static func getDelta(rate: Double) -> Double {
-    return 120 + 40 * floor(pow(1.175, max(0, rate - 4)) - 1)
+    return 20 + 10 * rate
   }
 
   func handleEvent(type: CGEventType, event: CGEvent) -> Bool {
@@ -69,13 +63,17 @@ import QuartzCore
       let sign: Double = d != 0 ? (d > 0 ? 1 : -1) : (f > 0 ? 1 : (f < 0 ? -1 : 0))
       guard sign != 0 else { continue }
 
-      if sign != lastSign[i] { history[i].removeAll() }
+      if sign != lastSign[i] {
+        history[i].removeAll()
+      }
       lastSign[i] = sign
       history[i].append(now)
       history[i].removeAll { now - $0 > Self.window }
 
-      let rate = Double(history[i].count) / Self.window
-      remaining[i] += -sign * Self.getDelta(rate: rate)
+      let eventRate = Double(history[i].count) / Self.window
+      let delta = Self.getDelta(rate: eventRate)
+      remaining[i] += -sign * delta
+      self.rate[i] = remaining[i] / Self.duration
       any = true
     }
     if any {
@@ -87,7 +85,6 @@ import QuartzCore
 
   private func start() {
     guard timer == nil else { return }
-    lastTime = CACurrentMediaTime()
     let t = Timer(timeInterval: 1 / Self.fps, repeats: true) { [weak self] _ in
       MainActor.assumeIsolated { self?.step() }
     }
@@ -105,14 +102,13 @@ import QuartzCore
 
     var out = [Int32(0), Int32(0)]
     for i in 0..<2 {
-      if abs(remaining[i]) + abs(carry[i]) < 20 {
+      if abs(remaining[i]) + abs(carry[i]) < 1 {
         remaining[i] = 0
         carry[i] = 0
         continue
       }
-      let r = abs(remaining[i])
-      let dir: Double = remaining[i] < 0 ? -1 : 1
-      let s = min(r, Self.speed(for: r) * dt) * dir
+      var s = rate[i] * dt
+      if abs(s) >= abs(remaining[i]) { s = remaining[i] }
       remaining[i] -= s
       carry[i] += s
       let whole = carry[i].rounded(.towardZero)

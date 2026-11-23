@@ -7,14 +7,24 @@ import CoreGraphics
 
     private(set) var swipeTracking = false
     private var session = false
+    private var sessionWide = false
     private var line: [UInt64] = []
     private var startIndex = 0
     private var cursor = 0
     private var baseCursor = 0
     private var stepsApplied = 0
     private var swipeMoved = false
+    private var maxFingers = 0
 
     var pending: Bool { session }
+
+    func updateFingers(_ n: Int) {
+        if n == 0 {
+            if !swipeTracking { maxFingers = 0 }
+        } else {
+            maxFingers = max(maxFingers, n)
+        }
+    }
 
     func commit() {
         guard session, !swipeTracking else { return }
@@ -25,7 +35,7 @@ import CoreGraphics
         if moved, let id = end { SpaceSwitcher.shared.commit(id) }
     }
 
-    private func beginSession() -> Bool {
+    private func beginSession(wide: Bool) -> Bool {
         let switcher = SpaceSwitcher.shared
         guard let snap = switcher.snapshot() else { return false }
         let cur = switcher.currentSpace(snap)
@@ -35,19 +45,28 @@ import CoreGraphics
         switcher.promote(cur)
         let sorted = switcher.ordered(snap.spaces.map(\.id))
         let left = sorted.filter { kinds[$0] == .special }
-        let right = sorted.filter { kinds[$0] != .special }
+        let right = sorted.filter { id in
+            guard kinds[id] != .special else { return false }
+            if id == cur { return true }
+            return wide ? kinds[id] == .desktop : kinds[id] == .full
+        }
         line = left.reversed() + right
-        startIndex = kinds[cur] == .special ? left.count - 1 : left.count
-        cursor = startIndex
+        guard let start = line.firstIndex(of: cur) else { return false }
+        startIndex = start
+        cursor = start
         switcher.virtualSpace = cur
         switcher.expectedFinal = nil
+        sessionWide = wide
         session = true
         return true
     }
 
     private func beginSwipe() -> Bool {
-        if session && !line.contains(SpaceSwitcher.shared.virtualSpace) { commit() }
-        if !session && !beginSession() { return false }
+        let wide = maxFingers >= 4
+        if session && (!line.contains(SpaceSwitcher.shared.virtualSpace) || sessionWide != wide) {
+            commit()
+        }
+        if !session && !beginSession(wide: wide) { return false }
         baseCursor = cursor
         stepsApplied = 0
         swipeMoved = false
