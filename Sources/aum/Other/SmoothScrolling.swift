@@ -5,11 +5,18 @@ import QuartzCore
 @MainActor final class SmoothScrolling {
   static let shared = SmoothScrolling()
 
-  private static let window = 0.5
-
   private var remaining = [0.0, 0.0]
   private var carry = [0.0, 0.0]
-  private var history: [[Double]] = [[], []]
+
+  private static let maxInstantRate = 50.0
+  private static let rateTau = 0.08
+  private static let idleDecayTau = 0.12
+  private static let followSpeed = 14.0
+
+  private var lastTickTime: [Double?] = [nil, nil]
+  private var smoothedEventRate = [0.0, 0.0]
+  private var speed = [0.0, 0.0]
+
   private var lastSign = [0.0, 0.0]
   private var flags = CGEventFlags()
 
@@ -19,11 +26,27 @@ import QuartzCore
   private static let fps = 240.0
   private var timer: Timer?
 
-  private static let duration = 0.15
-  private var rate = [0.0, 0.0]
-
   private static func getDelta(rate: Double) -> Double {
-    return 20 + 10 * rate
+    if rate < 10 {
+      return 40
+    }
+    if rate < 20 {
+      return 60
+    }
+    if rate < 24 {
+      return 100
+    }
+    if rate < 28 {
+      return 250
+    }
+    return 500
+  }
+
+  private static func getDuration(rate: Double) -> Double {
+    if rate <= 15 {
+      return 0.15
+    }
+    return 0.1
   }
 
   func handleEvent(type: CGEventType, event: CGEvent) -> Bool {
@@ -64,16 +87,29 @@ import QuartzCore
       guard sign != 0 else { continue }
 
       if sign != lastSign[i] {
-        history[i].removeAll()
+        lastSign[i] = sign
+        lastTickTime[i] = nil
+        smoothedEventRate[i] = 0
       }
-      lastSign[i] = sign
-      history[i].append(now)
-      history[i].removeAll { now - $0 > Self.window }
 
-      let eventRate = Double(history[i].count) / Self.window
-      let delta = Self.getDelta(rate: eventRate)
+      let instantRate: Double
+      if let prev = lastTickTime[i] {
+        let dt = max(now - prev, 1.0 / Self.maxInstantRate)
+        smoothedEventRate[i] *= exp(-dt / Self.idleDecayTau)
+        instantRate = min(1.0 / dt, Self.maxInstantRate)
+      } else {
+        instantRate = 1.0
+      }
+      lastTickTime[i] = now
+
+      let tickDt = 1.0 / max(instantRate, 1.0)
+      let alpha = 1.0 - exp(-tickDt / Self.rateTau)
+      smoothedEventRate[i] += alpha * (instantRate - smoothedEventRate[i])
+
+      let delta = Self.getDelta(rate: smoothedEventRate[i])
+      let duration = Self.getDuration(rate: smoothedEventRate[i])
       remaining[i] += -sign * delta
-      self.rate[i] = remaining[i] / Self.duration
+      self.speed[i] = remaining[i] / duration
       any = true
     }
     if any {
@@ -107,7 +143,7 @@ import QuartzCore
         carry[i] = 0
         continue
       }
-      var s = rate[i] * dt
+      var s = speed[i] * dt
       if abs(s) >= abs(remaining[i]) { s = remaining[i] }
       remaining[i] -= s
       carry[i] += s
@@ -138,7 +174,8 @@ import QuartzCore
   private func cancel() {
     remaining = [0, 0]
     carry = [0, 0]
-    history = [[], []]
+    lastTickTime = [nil, nil]
+    smoothedEventRate = [0.0, 0.0]
     stopTimer()
   }
 
