@@ -5,14 +5,15 @@ import QuartzCore
 @MainActor final class SmoothScrolling {
   static let shared = SmoothScrolling()
 
-  private var remaining = [0.0, 0.0]
-  private var carry = [0.0, 0.0]
-
+  private static let fps = 280.0
   private static let maxInstantRate = 50.0
   private static let rateTau = 0.08
   private static let idleDecayTau = 0.12
   private static let followSpeed = 14.0
 
+  private var timer: Timer?
+  private var remaining = [0.0, 0.0]
+  private var carry = [0.0, 0.0]
   private var lastTickTime: [Double?] = [nil, nil]
   private var smoothedEventRate = [0.0, 0.0]
   private var speed = [0.0, 0.0]
@@ -23,28 +24,19 @@ import QuartzCore
   private var trackpadMomentum = false
   private var momentumKilled = false
 
-  private static let fps = 240.0
-  private var timer: Timer?
-
   private static func getDelta(rate: Double) -> Double {
-    if rate < 10 {
-      return 40
-    }
-    if rate < 20 {
-      return 60
-    }
-    if rate < 24 {
-      return 100
+    if rate < 22 {
+      return 90
     }
     if rate < 28 {
-      return 250
+      return 300
     }
-    return 500
+    return 2000
   }
 
   private static func getDuration(rate: Double) -> Double {
-    if rate <= 15 {
-      return 0.15
+    if rate < 22 {
+      return 0.16
     }
     return 0.1
   }
@@ -106,8 +98,10 @@ import QuartzCore
       let alpha = 1.0 - exp(-tickDt / Self.rateTau)
       smoothedEventRate[i] += alpha * (instantRate - smoothedEventRate[i])
 
-      let delta = Self.getDelta(rate: smoothedEventRate[i])
-      let duration = Self.getDuration(rate: smoothedEventRate[i])
+      let rate = smoothedEventRate[i]
+
+      let delta = Self.getDelta(rate: rate)
+      let duration = Self.getDuration(rate: rate)
       remaining[i] += -sign * delta
       self.speed[i] = remaining[i] / duration
       any = true
