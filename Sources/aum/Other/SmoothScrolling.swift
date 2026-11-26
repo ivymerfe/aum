@@ -2,14 +2,14 @@ import CoreGraphics
 import Foundation
 import QuartzCore
 
-@MainActor final class SmoothScrolling {
+final class SmoothScrolling: @unchecked Sendable {
   static let shared = SmoothScrolling()
 
-  private static let fps = 280.0
+  private static let fps = 480.0
   private static let maxInstantRate = 50.0
   private static let rateTau = 0.08
   private static let idleDecayTau = 0.12
-  private static let followSpeed = 14.0
+  private static let followSpeed = 7.0
 
   private var timer: Timer?
   private var remaining = [0.0, 0.0]
@@ -17,6 +17,7 @@ import QuartzCore
   private var lastTickTime: [Double?] = [nil, nil]
   private var smoothedEventRate = [0.0, 0.0]
   private var speed = [0.0, 0.0]
+  private var currentSpeed = [0.0, 0.0]
 
   private var lastSign = [0.0, 0.0]
   private var flags = CGEventFlags()
@@ -24,25 +25,37 @@ import QuartzCore
   private var trackpadMomentum = false
   private var momentumKilled = false
 
+  private let queue = DispatchQueue(label: "smooth.scroll", qos: .userInteractive)
+  private let lock = NSLock()
+  private var source: DispatchSourceTimer?
+  private var lastStep = 0.0
+
   private static func getDelta(rate: Double) -> Double {
     if rate < 22 {
       return 90
     }
     if rate < 28 {
-      return 300
+      return 400
     }
-    return 2000
+    return 1600
   }
 
   private static func getDuration(rate: Double) -> Double {
     if rate < 22 {
-      return 0.16
+      return 0.14
     }
-    return 0.1
+    if rate < 28 {
+      return 0.10
+    }
+    return 0.07
   }
 
   func handleEvent(type: CGEventType, event: CGEvent) -> Bool {
-    guard Config.shared.smoothScrolling, type == .scrollWheel else { return false }
+    let enabled = MainActor.assumeIsolated { Config.shared.smoothScrolling }
+    guard enabled, type == .scrollWheel else { return false }
+    lock.lock()
+    defer { lock.unlock() }
+
     let phase = event.getIntegerValueField(.scrollWheelEventScrollPhase)
     let momentum = event.getIntegerValueField(.scrollWheelEventMomentumPhase)
     let isContinuous = event.getIntegerValueField(.scrollWheelEventIsContinuous) != 0
@@ -114,21 +127,27 @@ import QuartzCore
   }
 
   private func start() {
-    guard timer == nil else { return }
-    let t = Timer(timeInterval: 1 / Self.fps, repeats: true) { [weak self] _ in
-      MainActor.assumeIsolated { self?.step() }
-    }
-    RunLoop.main.add(t, forMode: .common)
-    timer = t
+    guard source == nil else { return }
+    let s = DispatchSource.makeTimerSource(flags: .strict, queue: queue)
+    s.schedule(deadline: .now(), repeating: 1 / Self.fps, leeway: .nanoseconds(0))
+    lastStep = CACurrentMediaTime()
+    s.setEventHandler { [weak self] in self?.step() }
+    s.resume()
+    source = s
   }
 
   private func stopTimer() {
-    timer?.invalidate()
-    timer = nil
+    source?.cancel()
+    source = nil
   }
 
   private func step() {
-    let dt = 1.0 / Self.fps
+    lock.lock()
+    defer { lock.unlock() }
+    let now = CACurrentMediaTime()
+    let dt = min(now - lastStep, 0.05)
+    lastStep = now
+    let k = 1 - exp(-Self.followSpeed * dt)
 
     var out = [Int32(0), Int32(0)]
     for i in 0..<2 {
@@ -137,7 +156,8 @@ import QuartzCore
         carry[i] = 0
         continue
       }
-      var s = speed[i] * dt
+      currentSpeed[i] += (speed[i] - currentSpeed[i]) * k
+      var s = currentSpeed[i] * dt
       if abs(s) >= abs(remaining[i]) { s = remaining[i] }
       remaining[i] -= s
       carry[i] += s
@@ -161,6 +181,7 @@ import QuartzCore
 
     if remaining.allSatisfy({ $0 == 0 }) {
       carry = [0, 0]
+      currentSpeed = [0, 0]
       stopTimer()
     }
   }
@@ -168,6 +189,7 @@ import QuartzCore
   private func cancel() {
     remaining = [0, 0]
     carry = [0, 0]
+    currentSpeed = [0, 0]
     lastTickTime = [nil, nil]
     smoothedEventRate = [0.0, 0.0]
     stopTimer()

@@ -1,0 +1,111 @@
+<!doctype html>
+<meta charset="utf-8" />
+<body style="margin: 0; background: #111; color: #ddd; font: 13px monospace">
+  <div id="s" style="padding: 8px; height: 64px; white-space: pre"></div>
+  <canvas id="a"></canvas>
+  <canvas id="b"></canvas>
+  <script>
+    const W = 4000;
+    let ev = [];
+    const s = document.getElementById("s");
+    const ca = document.getElementById("a");
+    const cb = document.getElementById("b");
+
+    addEventListener(
+      "wheel",
+      (e) => {
+        e.preventDefault();
+        ev.push({ t: e.timeStamp, x: e.deltaX, y: e.deltaY });
+      },
+      { passive: false },
+    );
+
+    addEventListener("keydown", (e) => {
+      if (e.key === "r") ev = [];
+    });
+
+    function plot(c, pts, max, min, color, now) {
+      const g = c.getContext("2d");
+      g.strokeStyle = color;
+      g.beginPath();
+      pts.forEach((p, i) => {
+        const x = (1 - (now - p.t) / W) * c.width;
+        const y = c.height - ((p.v - min) / (max - min)) * c.height;
+        i ? g.lineTo(x, y) : g.moveTo(x, y);
+      });
+      g.stroke();
+      g.fillStyle = color;
+      pts.forEach((p) => {
+        const x = (1 - (now - p.t) / W) * c.width;
+        const y = c.height - ((p.v - min) / (max - min)) * c.height;
+        g.fillRect(x - 1.5, y - 1.5, 3, 3);
+      });
+    }
+
+    function line(c, v, max, min, color) {
+      const g = c.getContext("2d");
+      const y = c.height - ((v - min) / (max - min)) * c.height;
+      g.strokeStyle = color;
+      g.beginPath();
+      g.moveTo(0, y);
+      g.lineTo(c.width, y);
+      g.stroke();
+    }
+
+    function frame() {
+      const h = Math.floor((innerHeight - 80) / 2);
+      ca.width = cb.width = innerWidth;
+      ca.height = cb.height = h;
+      const now = performance.now();
+      ev = ev.filter((e) => now - e.t < W);
+
+      const mx = Math.max(
+        10,
+        ...ev.map((e) => Math.abs(e.y)),
+        ...ev.map((e) => Math.abs(e.x)),
+      );
+      line(ca, 0, mx, -mx, "#444");
+      plot(
+        ca,
+        ev.map((e) => ({ t: e.t, v: e.y })),
+        mx,
+        -mx,
+        "#4af",
+        now,
+      );
+      plot(
+        ca,
+        ev.map((e) => ({ t: e.t, v: e.x })),
+        mx,
+        -mx,
+        "#fa4",
+        now,
+      );
+
+      const dts = [];
+      for (let i = 1; i < ev.length; i++)
+        dts.push({ t: ev[i].t, v: ev[i].t - ev[i - 1].t });
+      const dm = Math.max(40, ...dts.map((d) => d.v));
+      line(cb, 8.33, dm, 0, "#363");
+      line(cb, 16.67, dm, 0, "#363");
+      plot(cb, dts, dm, 0, "#4f8", now);
+
+      const n = dts.length;
+      const mean = n ? dts.reduce((a, d) => a + d.v, 0) / n : 0;
+      const sd = n
+        ? Math.sqrt(dts.reduce((a, d) => a + (d.v - mean) ** 2, 0) / n)
+        : 0;
+      let jerk = 0;
+      for (let i = 1; i < ev.length; i++)
+        jerk += Math.abs(ev[i].y - ev[i - 1].y);
+      jerk = ev.length > 1 ? jerk / (ev.length - 1) : 0;
+      const maxdt = Math.max(0, ...dts.map((d) => d.v));
+
+      s.textContent =
+        `events: ${ev.length}   dt mean: ${mean.toFixed(2)} ms   dt sd: ${sd.toFixed(2)} ms   dt max: ${maxdt.toFixed(1)} ms\n` +
+        `mean |Δdelta|: ${jerk.toFixed(2)}`;
+      requestAnimationFrame(frame);
+    }
+    frame();
+  </script>
+</body>
