@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import QuartzCore
+import os
 
 final class SmoothScrolling: @unchecked Sendable {
   static let shared = SmoothScrolling()
@@ -9,13 +10,6 @@ final class SmoothScrolling: @unchecked Sendable {
   private static let maxInstantRate = 50.0
   private static let rateTau = 0.08
   private static let idleDecayTau = 0.12
-  private static let targetTau = 0.06
-
-  private var pending = [0.0, 0.0]
-  private var remaining = [0.0, 0.0]
-  private var velocity = [0.0, 0.0]
-  private var acc = [0.0, 0.0]
-  private var omega = [0.0, 0.0]
 
   private var lastTickTime: [Double?] = [nil, nil]
   private var smoothedEventRate = [0.0, 0.0]
@@ -25,7 +19,7 @@ final class SmoothScrolling: @unchecked Sendable {
   private var trackpadMomentum = false
   private var momentumKilled = false
 
-  private let lock = NSLock()
+  private let lock = OSAllocatedUnfairLock()
   private let wake = DispatchSemaphore(value: 0)
   private var thread: Thread?
   private var running = false
@@ -33,13 +27,29 @@ final class SmoothScrolling: @unchecked Sendable {
   private var lastStep = 0.0
 
   private static func getDelta(rate: Double) -> Double {
-    let t = min(max((rate - 20) / 12, 0), 1)
-    return 100 * pow(16, t)
+    return 30 * pow(2, rate / 6)
   }
 
-  private static func getOmega(rate: Double) -> Double {
-    let alpha = min(1, max(0, rate - 4) / 12)
-    return 40.0 * alpha + 12.0 * (1 - alpha)
+  private struct Impulse {
+    var start: Double
+    var delta: Double
+    var done: Double
+    var duration: Double
+  }
+  private static let minDuration = 0.20
+  private static let maxDuration = 0.40
+
+  private static func getDuration(delta: Double) -> Double {
+    let n = min(sqrt(abs(delta) / 3000), 1)
+    return maxDuration + (minDuration - maxDuration) * n
+  }
+
+  private var impulses: [[Impulse]] = [[], []]
+  private var acc = [0.0, 0.0]
+
+  private static func shape(_ u: Double) -> Double {
+    let w = 0.6 * (1 - (1 - u) * (1 - u)) + 0.4 * u
+    return w * w * (3 - 2 * w)
   }
 
   func handleEvent(type: CGEventType, event: CGEvent) -> Bool {
@@ -87,10 +97,8 @@ final class SmoothScrolling: @unchecked Sendable {
         lastSign[i] = sign
         lastTickTime[i] = nil
         smoothedEventRate[i] = 0
-        remaining[i] = 0
-        velocity[i] = 0
+        impulses[i].removeAll(keepingCapacity: true)
         acc[i] = 0
-        pending[i] = 0
       }
 
       let instantRate: Double
@@ -107,8 +115,9 @@ final class SmoothScrolling: @unchecked Sendable {
       let alpha = 1.0 - exp(-tickDt / Self.rateTau)
       smoothedEventRate[i] += alpha * (instantRate - smoothedEventRate[i])
 
-      pending[i] -= sign * Self.getDelta(rate: smoothedEventRate[i])
-      omega[i] = Self.getOmega(rate: smoothedEventRate[i])
+      let delta = -sign * Self.getDelta(rate: smoothedEventRate[i])
+      impulses[i].append(
+        Impulse(start: now, delta: delta, done: 0, duration: Self.getDuration(delta: delta)))
       any = true
     }
     if any {
@@ -155,6 +164,8 @@ final class SmoothScrolling: @unchecked Sendable {
       while true {
         next += period
         mach_wait_until(next)
+        let now = mach_absolute_time()
+        if now > next + period { next = now }
         if step() { break }
       }
     }
@@ -162,53 +173,40 @@ final class SmoothScrolling: @unchecked Sendable {
 
   private func step() -> Bool {
     lock.lock()
-    let dt = 1.0 / Self.fps
-    let kt = 1.0 - exp(-dt / Self.targetTau)
-
-    var out = [Int32(0), Int32(0)]
+    let now = CACurrentMediaTime()
+    var o0: Int32 = 0
+    var o1: Int32 = 0
     for i in 0..<2 {
-      if remaining[i] == 0 && velocity[i] == 0 && pending[i] == 0 { continue }
-
-      let shift = pending[i] * kt
-      pending[i] -= shift
-      remaining[i] += shift
-      if abs(pending[i]) < 0.5 {
-        remaining[i] += pending[i]
-        pending[i] = 0
+      var j = 0
+      while j < impulses[i].count {
+        let u = min((now - impulses[i][j].start) / impulses[i][j].duration, 1)
+        let k = Self.shape(u)
+        acc[i] += impulses[i][j].delta * (k - impulses[i][j].done)
+        impulses[i][j].done = k
+        if u >= 1 {
+          impulses[i].remove(at: j)
+        } else {
+          j += 1
+        }
       }
-
-      let w = omega[i]
-      let decay = exp(-w * dt)
-      let x0 = -remaining[i]
-      let c = velocity[i] + w * x0
-      let x = (x0 + c * dt) * decay
-      velocity[i] = (velocity[i] - w * c * dt) * decay
-      remaining[i] = -x
-      acc[i] += x - x0
-
       let whole = acc[i].rounded(.towardZero)
       acc[i] -= whole
-      out[i] = Int32(whole)
-
-      if abs(remaining[i]) < 0.5 && abs(velocity[i]) < 5 && pending[i] == 0 {
-        remaining[i] = 0
-        velocity[i] = 0
-        acc[i] = 0
-      }
+      if i == 0 { o0 = Int32(whole) } else { o1 = Int32(whole) }
+      if impulses[i].isEmpty { acc[i] = 0 }
     }
     let f = flags
-    let idle = remaining[0] == 0 && remaining[1] == 0 && pending[0] == 0 && pending[1] == 0
+    let idle = impulses[0].isEmpty && impulses[1].isEmpty
     if idle { running = false }
     lock.unlock()
 
-    if out[0] != 0 || out[1] != 0,
+    if o0 != 0 || o1 != 0,
       let e = CGEvent(
         scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2,
-        wheel1: out[0], wheel2: out[1], wheel3: 0)
+        wheel1: o0, wheel2: o1, wheel3: 0)
     {
       e.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
-      e.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: Double(out[0]) / 10)
-      e.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: Double(out[1]) / 10)
+      e.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: Double(o0) / 10)
+      e.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: Double(o1) / 10)
       e.flags = f
       markSynthetic(e)
       e.post(tap: .cghidEventTap)
@@ -217,9 +215,8 @@ final class SmoothScrolling: @unchecked Sendable {
   }
 
   private func cancel() {
-    remaining = [0, 0]
-    pending = [0, 0]
-    velocity = [0, 0]
+    impulses[0].removeAll(keepingCapacity: true)
+    impulses[1].removeAll(keepingCapacity: true)
     acc = [0, 0]
     lastTickTime = [nil, nil]
     smoothedEventRate = [0.0, 0.0]
