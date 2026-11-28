@@ -22,6 +22,7 @@ import os
 
   private var betterDisplayRotationItem: NSMenuItem!
   private var smoothScrollingItem: NSMenuItem!
+  private var smoothScrollingTypeItem: NSMenuItem!
 
   private var cmdTabSwitcherItem: NSMenuItem!
   private var altTapSwitcherItem: NSMenuItem!
@@ -122,6 +123,11 @@ import os
     smoothScrollingItem = menu.addItem(
       withTitle: "SmoothScrolling",
       action: #selector(toggleSmoothScrolling),
+      target: self
+    )
+    smoothScrollingTypeItem = menu.addItem(
+      withTitle: "Smooth type: \(config.smoothScrollingType)",
+      action: #selector(changeSmoothType),
       target: self
     )
 
@@ -233,6 +239,11 @@ import os
   @objc private func toggleSmoothScrolling(sender: NSButton) {
     config.smoothScrolling = (smoothScrollingItem.state == .off)
     smoothScrollingItem.state = config.smoothScrolling ? .on : .off
+  }
+
+  @objc private func changeSmoothType(sender: NSButton) {
+    config.smoothScrollingType = (config.smoothScrollingType + 1) % 2
+    smoothScrollingTypeItem.title = "Smooth type: \(config.smoothScrollingType)"
   }
 
   // Switcher

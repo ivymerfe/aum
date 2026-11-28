@@ -5,6 +5,7 @@
 
     @UserDefault var betterDisplayRotation = true
     @UserDefault var smoothScrolling = true
+    @UserDefault var smoothScrollingType = 1
 
     @UserDefault var cmdTabSwitcher = true
     @UserDefault var altTapSwitcher = true

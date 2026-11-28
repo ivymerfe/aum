@@ -3,8 +3,8 @@ import Foundation
 import QuartzCore
 import os
 
-final class SmoothScrolling: @unchecked Sendable {
-  static let shared = SmoothScrolling()
+final class SmoothScrolling1: @unchecked Sendable {
+  static let shared = SmoothScrolling1()
 
   private static let fps = 360.0
   private static let maxInstantRate = 50.0
@@ -23,37 +23,34 @@ final class SmoothScrolling: @unchecked Sendable {
   private let wake = DispatchSemaphore(value: 0)
   private var thread: Thread?
   private var running = false
-  private var startTime = 0.0
-  private var lastStep = 0.0
 
   private static func getDelta(rate: Double) -> Double {
-    return 30 * pow(2, rate / 6)
+    return 40 * pow(2, rate / 6)
   }
 
-  private struct Impulse {
-    var start: Double
-    var delta: Double
-    var done: Double
-    var duration: Double
-  }
   private static let minDuration = 0.20
   private static let maxDuration = 0.40
+  private static let maxSlope = 2.5
 
   private static func getDuration(delta: Double) -> Double {
-    let n = min(sqrt(abs(delta) / 3000), 1)
+    let n = min(sqrt(abs(delta) / 4000), 1)
     return maxDuration + (minDuration - maxDuration) * n
   }
 
-  private var impulses: [[Impulse]] = [[], []]
-  private var acc = [0.0, 0.0]
-
-  private static func shape(_ u: Double) -> Double {
-    let w = 0.6 * (1 - (1 - u) * (1 - u)) + 0.4 * u
-    return w * w * (3 - 2 * w)
+  private struct Anim {
+    var start: Double
+    var delta: Double
+    var duration: Double
+    var done: Double
+    var curve: Bezier
   }
 
+  private var anims: [Anim?] = [nil, nil]
+
   func handleEvent(type: CGEventType, event: CGEvent) -> Bool {
-    let enabled = MainActor.assumeIsolated { Config.shared.smoothScrolling }
+    let enabled = MainActor.assumeIsolated {
+      Config.shared.smoothScrolling && Config.shared.smoothScrollingType == 1
+    }
     guard enabled, type == .scrollWheel else { return false }
     lock.lock()
     defer { lock.unlock() }
@@ -78,8 +75,9 @@ final class SmoothScrolling: @unchecked Sendable {
       }
       return false
     }
-
-    if trackpadMomentum { stopMomentum() }
+    if trackpadMomentum {
+      stopMomentum()
+    }
 
     let fields: [(CGEventField, CGEventField)] = [
       (.scrollWheelEventDeltaAxis1, .scrollWheelEventFixedPtDeltaAxis1),
@@ -97,7 +95,7 @@ final class SmoothScrolling: @unchecked Sendable {
         lastSign[i] = sign
         lastTickTime[i] = nil
         smoothedEventRate[i] = 0
-        impulses[i].removeAll(keepingCapacity: true)
+        anims[i] = nil
         acc[i] = 0
       }
 
@@ -115,9 +113,8 @@ final class SmoothScrolling: @unchecked Sendable {
       let alpha = 1.0 - exp(-tickDt / Self.rateTau)
       smoothedEventRate[i] += alpha * (instantRate - smoothedEventRate[i])
 
-      let delta = -sign * Self.getDelta(rate: smoothedEventRate[i])
-      impulses[i].append(
-        Impulse(start: now, delta: delta, done: 0, duration: Self.getDuration(delta: delta)))
+      let increment = -sign * Self.getDelta(rate: smoothedEventRate[i])
+      retarget(axis: i, increment: increment, now: now)
       any = true
     }
     if any {
@@ -127,11 +124,27 @@ final class SmoothScrolling: @unchecked Sendable {
     return true
   }
 
+  private func retarget(axis i: Int, increment: Double, now: Double) {
+    var remaining = 0.0
+    var velocity = 0.0
+    if let a = anims[i] {
+      let u = min((now - a.start) / a.duration, 1)
+      remaining = a.delta * (1 - a.curve.value(u))
+      velocity = a.delta / a.duration * a.curve.slope(u)
+      acc[i] += a.delta * a.curve.value(u) - a.done
+    }
+    let newDelta = remaining + increment
+    let duration = Self.getDuration(delta: newDelta)
+    var slope = velocity * duration / newDelta
+    if !slope.isFinite || slope < 0 { slope = 0 }
+    slope = min(slope, Self.maxSlope)
+    anims[i] = Anim(
+      start: now, delta: newDelta, duration: duration, done: 0, curve: Bezier(slope: slope))
+  }
+
   private func start() {
     guard !running else { return }
     running = true
-    startTime = CACurrentMediaTime()
-    lastStep = startTime
     if thread == nil {
       let t = Thread { [weak self] in self?.loop() }
       t.qualityOfService = .userInteractive
@@ -171,31 +184,27 @@ final class SmoothScrolling: @unchecked Sendable {
     }
   }
 
+  private var acc = [0.0, 0.0]
   private func step() -> Bool {
     lock.lock()
     let now = CACurrentMediaTime()
     var o0: Int32 = 0
     var o1: Int32 = 0
     for i in 0..<2 {
-      var j = 0
-      while j < impulses[i].count {
-        let u = min((now - impulses[i][j].start) / impulses[i][j].duration, 1)
-        let k = Self.shape(u)
-        acc[i] += impulses[i][j].delta * (k - impulses[i][j].done)
-        impulses[i][j].done = k
-        if u >= 1 {
-          impulses[i].remove(at: j)
-        } else {
-          j += 1
-        }
+      if var a = anims[i] {
+        let u = min((now - a.start) / a.duration, 1)
+        let p = a.delta * a.curve.value(u)
+        acc[i] += p - a.done
+        a.done = p
+        anims[i] = u >= 1 ? nil : a
       }
       let whole = acc[i].rounded(.towardZero)
       acc[i] -= whole
       if i == 0 { o0 = Int32(whole) } else { o1 = Int32(whole) }
-      if impulses[i].isEmpty { acc[i] = 0 }
+      if anims[i] == nil { acc[i] = 0 }
     }
     let f = flags
-    let idle = impulses[0].isEmpty && impulses[1].isEmpty
+    let idle = anims[0] == nil && anims[1] == nil
     if idle { running = false }
     lock.unlock()
 
@@ -215,8 +224,7 @@ final class SmoothScrolling: @unchecked Sendable {
   }
 
   private func cancel() {
-    impulses[0].removeAll(keepingCapacity: true)
-    impulses[1].removeAll(keepingCapacity: true)
+    anims = [nil, nil]
     acc = [0, 0]
     lastTickTime = [nil, nil]
     smoothedEventRate = [0.0, 0.0]
